@@ -16,6 +16,7 @@ from PIL import Image
 
 from siftivex.paths import CONFIG_DIR
 from siftivex.tag_vocabulary import (
+    DEFAULT_MAX_FLAT_TAGS,
     build_system_prompt,
     build_user_prompt,
     load_tag_vocabulary,
@@ -40,6 +41,19 @@ def load_vlm_config(path: Path | None = None) -> dict[str, Any]:
         raise FileNotFoundError(f"VLM config not found: {config_path} (copy from {example})")
     with config_path.open(encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def is_readable_image(path: Path) -> bool:
+    if not path.is_file() or path.stat().st_size == 0:
+        return False
+    try:
+        with Image.open(path) as img:
+            img.verify()
+        with Image.open(path) as img:
+            img.load()
+        return True
+    except Exception:
+        return False
 
 
 def _image_to_data_url(path: Path, max_size: int, quality: int) -> str:
@@ -74,8 +88,9 @@ class VlmClient:
         self.model = self.config["model"]
 
     def tag_image(self, path: Path, priority_tags: list[str] | None = None) -> VlmTagResult:
-        system_prompt = build_system_prompt(self.vocabulary)
-        user_text = build_user_prompt(priority_tags or [])
+        max_flat_tags = int(self.config.get("max_flat_tags", DEFAULT_MAX_FLAT_TAGS))
+        system_prompt = build_system_prompt(self.vocabulary, max_flat_tags=max_flat_tags)
+        user_text = build_user_prompt(priority_tags or [], max_flat_tags=max_flat_tags)
 
         data_url = _image_to_data_url(
             path,
@@ -103,9 +118,10 @@ class VlmClient:
 
         timeout = float(self.config.get("timeout_seconds", 180))
         last_error: Exception | None = None
-        tokens = int(self.config.get("max_tokens", 512))
-        for attempt in range(2):
-            payload["max_tokens"] = tokens * (2 if attempt else 1)
+        tokens = int(self.config.get("max_tokens", 1536))
+        max_attempts = int(self.config.get("max_parse_attempts", 3))
+        for attempt in range(max_attempts):
+            payload["max_tokens"] = tokens * (attempt + 1)
             try:
                 with httpx.Client(timeout=timeout) as client:
                     resp = client.post(f"{self.base_url}/chat/completions", json=payload)

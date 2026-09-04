@@ -13,17 +13,27 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from siftivex.db import get_connection  # noqa: E402
-from siftivex.filename_tags import parse_legacy_filename_tags  # noqa: E402
 from siftivex.paths import DEFAULT_DB_PATH, PHASE0_RESULTS  # noqa: E402
-from siftivex.tags_db import apply_filename_tags, effective_tags, replace_vlm_tags  # noqa: E402
-from siftivex.vlm import VlmClient  # noqa: E402
+from siftivex.tags_db import (  # noqa: E402
+    RETRY_TAG,
+    apply_filename_tags,
+    effective_tags,
+    mark_image_missing,
+    mark_vlm_retry_needed,
+    replace_vlm_tags,
+)
+from siftivex.vlm import VlmClient, is_readable_image  # noqa: E402
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="VLM auto-tagging")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH)
     parser.add_argument("--limit", type=int, default=0, help="Max images (0=all)")
-    parser.add_argument("--retry-errors", action="store_true", help="Only images without auto tags")
+    parser.add_argument(
+        "--retry-errors",
+        action="store_true",
+        help=f"Only images tagged {RETRY_TAG} or without auto tags",
+    )
     args = parser.parse_args()
 
     conn = get_connection(args.db)
@@ -31,18 +41,27 @@ def main() -> int:
         query = """
             SELECT i.image_id, i.source_path, i.file_name FROM images i
             WHERE i.status = 'active'
-              AND NOT EXISTS (
-                SELECT 1 FROM image_tags t
-                WHERE t.image_id = i.image_id AND t.source = 'auto'
+              AND (
+                EXISTS (
+                  SELECT 1 FROM image_tags t
+                  WHERE t.image_id = i.image_id
+                    AND t.source = 'auto'
+                    AND t.tag = ?
+                )
+                OR NOT EXISTS (
+                  SELECT 1 FROM image_tags t
+                  WHERE t.image_id = i.image_id AND t.source = 'auto'
+                )
               )
             ORDER BY i.image_id
         """
+        rows = conn.execute(query, (RETRY_TAG,)).fetchall()
     else:
         query = """
             SELECT image_id, source_path, file_name FROM images
             WHERE status = 'active' ORDER BY image_id
         """
-    rows = conn.execute(query).fetchall()
+        rows = conn.execute(query).fetchall()
     conn.close()
 
     if args.limit > 0:
@@ -55,6 +74,7 @@ def main() -> int:
     client = VlmClient()
     timings: list[dict] = []
     errors: list[dict] = []
+    missing = 0
     tagged = 0
     t0 = time.perf_counter()
 
@@ -64,6 +84,20 @@ def main() -> int:
             image_id = row["image_id"]
             path = Path(row["source_path"])
             filename = row["file_name"]
+
+            if not is_readable_image(path):
+                mark_image_missing(conn, image_id)
+                conn.commit()
+                missing += 1
+                errors.append(
+                    {
+                        "image_id": image_id,
+                        "path": str(path),
+                        "error": "missing or unreadable image",
+                    }
+                )
+                print(f"  MISSING {image_id}: {path}", file=sys.stderr)
+                continue
 
             filename_tags = apply_filename_tags(conn, image_id, filename)
             start = time.perf_counter()
@@ -97,9 +131,10 @@ def main() -> int:
                     f"fn={len(filename_tags)} total={len(eff)}"
                 )
             except Exception as exc:
-                conn.rollback()
+                mark_vlm_retry_needed(conn, image_id)
+                conn.commit()
                 errors.append({"image_id": image_id, "path": str(path), "error": str(exc)})
-                print(f"  ERROR {image_id}: {exc}", file=sys.stderr)
+                print(f"  ERROR {image_id}: {exc} → tagged {RETRY_TAG}", file=sys.stderr)
     finally:
         conn.close()
 
@@ -109,6 +144,7 @@ def main() -> int:
         "task": "0.5_vlm_tag",
         "model": client.model,
         "count": tagged,
+        "missing": missing,
         "errors": len(errors),
         "total_seconds": round(total, 2),
         "avg_seconds": round(total / max(tagged, 1), 2),
@@ -118,7 +154,7 @@ def main() -> int:
     report_path = PHASE0_RESULTS / "vlm_timing.json"
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    print(f"Tagged {tagged} images, {len(errors)} errors")
+    print(f"Tagged {tagged} images, {missing} missing, {len(errors)} errors")
     print(f"Avg {report['avg_seconds']}s/image, total {report['total_seconds']}s")
     print(f"Report: {report_path}")
     return 1 if errors and not tagged else 0

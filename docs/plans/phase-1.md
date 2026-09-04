@@ -9,7 +9,7 @@
 
 ## 前提条件
 
-- [ ] Phase 0 完了（Go 判断）
+- [x] Phase 0 完了（Go 判断 — 2026-09-04）
 - [ ] [data-model.md](../specs/data-model.md) 確定
 - [ ] [indexing.md](../specs/indexing.md) 確定
 - [ ] [folder-rules.md](../specs/folder-rules.md) 確定（最低限 pixiv + legacy）

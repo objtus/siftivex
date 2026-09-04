@@ -7,6 +7,8 @@ import sqlite3
 from siftivex.filename_tags import parse_legacy_filename_tags
 from siftivex.tag_vocabulary import load_tag_vocabulary, normalize_tags
 
+RETRY_TAG = "要再タグ"
+
 
 def tags_to_rows(image_id: str, tags: list[str], source: str) -> list[tuple[str, str, str]]:
     seen: set[str] = set()
@@ -82,3 +84,19 @@ def effective_tags(conn: sqlite3.Connection, image_id: str) -> list[str]:
         (image_id, image_id),
     ).fetchall()
     return [r[0] for r in rows]
+
+
+def mark_vlm_retry_needed(conn: sqlite3.Connection, image_id: str) -> None:
+    """Clear auto VLM tags and mark image for re-tagging."""
+    replace_vlm_tags(conn, image_id, {}, [RETRY_TAG])
+    conn.execute(
+        "UPDATE images SET vlm_caption = NULL, updated_at = datetime('now') WHERE image_id = ?",
+        (image_id,),
+    )
+
+
+def mark_image_missing(conn: sqlite3.Connection, image_id: str) -> None:
+    conn.execute(
+        "UPDATE images SET status = 'missing', updated_at = datetime('now') WHERE image_id = ?",
+        (image_id,),
+    )

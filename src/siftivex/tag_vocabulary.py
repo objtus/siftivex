@@ -133,7 +133,14 @@ def preferred_tag_names(vocabulary: dict[str, Any]) -> list[str]:
     return merged
 
 
-def build_system_prompt(vocabulary: dict[str, Any] | None = None) -> str:
+DEFAULT_MAX_FLAT_TAGS = 60
+
+
+def build_system_prompt(
+    vocabulary: dict[str, Any] | None = None,
+    *,
+    max_flat_tags: int = DEFAULT_MAX_FLAT_TAGS,
+) -> str:
     vocab = vocabulary or load_tag_vocabulary()
     preferred = preferred_tag_names(vocab)
     tag_notes: dict[str, str] = {**DEFAULT_TAG_NOTES, **vocab.get("tag_notes", {})}
@@ -162,8 +169,8 @@ Rules:
 - namespace_tags values MUST be chosen exactly from the allowed lists below
 - flat_tags MUST use terms from【優先語彙】when they apply (exact spelling)
 -【priority_tags】confirmed visually MUST appear in flat_tags
-- Add additional flat_tags freely when they describe the image (no count limit)
-- Prefer【優先語彙】but do not omit relevant tags
+- flat_tags: include all confirmed relevant tags, up to {max_flat_tags} total
+- Prefer【優先語彙】but do not omit relevant tags within the limit
 - flat_tags and caption in Japanese
 - Do not contradict the image
 - Follow【タグの意味】for ambiguous tags
@@ -180,11 +187,11 @@ Allowed namespace values:
 """
 
 
-def build_user_prompt(priority_tags: list[str]) -> str:
+def build_user_prompt(priority_tags: list[str], *, max_flat_tags: int = DEFAULT_MAX_FLAT_TAGS) -> str:
     priority = ", ".join(priority_tags) if priority_tags else "（なし）"
     return (
         "Analyze this image.\n"
         f"【priority_tags】{priority}\n"
         "Include confirmed priority_tags in flat_tags. "
-        "Use【優先語彙】and add any other relevant flat_tags."
+        f"Use【優先語彙】and add other relevant flat_tags (max {max_flat_tags})."
     )

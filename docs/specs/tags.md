@@ -27,7 +27,7 @@
 
 - **優先語彙**: ファイル名タグから自動生成（`config/tag_vocabulary.yaml`）
 - VLM は優先語彙を exact match で使う（システムプロンプトに注入）
-- 語彙に無い概念も**自由に追加可**（件数制限なし）
+- 語彙に無い概念も追加可。**上限**: `config/vlm.yaml` の `max_flat_tags`（デフォルト 60）
 - 表記ゆれは `aliases` で手動統合 → 再生成
 - `namespace_tags` と重複する flat タグは `exclude_flat_tags` で除外（例: `2D` → `種類/`）
 
@@ -75,11 +75,12 @@ make build-vocabulary   # under.iphone 全件スキャン → config/tag_vocabul
 | タグ | 意味 | 付与方法 |
 |---|---|---|
 | `未分類` | VLM タグ付け未確定 | 自動（namespace/flat が空の場合） |
+| `要再タグ` | VLM 実行失敗（JSON 不正等） | 自動。`vlm_tag.py --retry-errors` で再実行 |
 
 ## VLM プロンプト
 
 - **モデル**: Qwen3.6 35B（llama.cpp / port 8081）
-- **設定**: `config/vlm.yaml`
+- **設定**: `config/vlm.yaml`（`max_tokens`, `max_flat_tags` 等）
 - **thinking**: 無効（`enable_thinking: false`）
 
 ### タグ生成の2層

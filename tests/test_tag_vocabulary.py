@@ -1,6 +1,7 @@
 from siftivex.tag_vocabulary import (
     NAMESPACE_OPTIONS,
     build_system_prompt,
+    build_user_prompt,
     is_noise_tag,
     normalize_tags,
     validate_namespace_tags,
@@ -41,3 +42,10 @@ def test_build_system_prompt_includes_all_namespaces():
     for namespace, values in NAMESPACE_OPTIONS.items():
         assert namespace in prompt
         assert values[0] in prompt
+
+
+def test_build_system_prompt_max_flat_tags():
+    prompt = build_system_prompt({}, max_flat_tags=60)
+    assert "up to 60 total" in prompt
+    user = build_user_prompt([], max_flat_tags=60)
+    assert "max 60" in user
