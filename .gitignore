@@ -1,0 +1,25 @@
+# ローカル設定（パスを含む）
+config/phase0.yaml
+
+# データ（DB・ベクトル・検証セット）
+data/siftivex.db
+data/lance/
+data/phase0/manifest.json
+data/phase0/results/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+dist/
+
+# 環境変数
+.env
+.env.*

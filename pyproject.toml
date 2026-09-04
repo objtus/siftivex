@@ -1,0 +1,36 @@
+[project]
+name = "siftivex"
+version = "0.0.0"
+description = "Local LLM-powered image archive search"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "blake3>=1.0.0",
+    "PyYAML>=6.0",
+    "Pillow>=10.0",
+]
+
+[project.optional-dependencies]
+embed = [
+    "lancedb>=0.17.0",
+    "open-clip-torch>=2.24.0",
+    "torch>=2.0.0",
+]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6.0",
+]
+
+[project.scripts]
+siftivex-pipeline = "siftivex.pipeline:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

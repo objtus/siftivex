@@ -1,0 +1,30 @@
+# Phase 0 検証用データセット設定
+# コピー: cp config/phase0.yaml.example config/phase0.yaml
+# config/phase0.yaml は gitignore 対象（ローカルパスを含むため）
+
+sample_size: 300          # 総枚数
+seed: 42                  # 再現性のための乱数シード
+
+sources:
+  - route_tag: route/pixiv
+    path: /path/to/pixiv/downloads
+    count: 100
+
+  - route_tag: route/legacy
+    path: /path/to/legacy/archive
+    count: 100
+
+  - route_tag: route/web
+    path: /path/to/web/collection
+    count: 100
+
+# 対象拡張子
+extensions:
+  - .jpg
+  - .jpeg
+  - .png
+  - .webp
+  - .gif
+
+output:
+  manifest: data/phase0/manifest.json
