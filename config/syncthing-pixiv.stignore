@@ -1,0 +1,22 @@
+// Syncthing .stignore for pixiv bookmarks folder
+// Windows: <pixiv-folder>\.stignore にコピー
+// サーバー: <archive>/pixiv/.stignore にコピー
+
+// OS 生成ファイル
+Thumbs.db
+Desktop.ini
+.DS_Store
+._*
+
+// Syncthing
+.stfolder
+.stignore
+.stversions
+
+// ブクマエクスポート・作業ファイル（画像ではない）
+result-total*
+*.csv
+*.py
+
+// メタデータ sidecar（画像ファイルの同伴 JSON。単体では同期不要だが軽量のため除外しない）
+// *.pixiv.json

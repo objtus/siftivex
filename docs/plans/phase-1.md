@@ -1,6 +1,6 @@
 # Phase 1: コアデータ層
 
-> **状態**: スケルトン
+> **状態**: Phase 1 方針確定
 > **参照**: [blueprint.md](../../blueprint.md) §開発フロー
 
 ## 目的
@@ -10,10 +10,14 @@
 ## 前提条件
 
 - [x] Phase 0 完了（Go 判断 — 2026-09-04）
-- [ ] [data-model.md](../specs/data-model.md) 確定
-- [ ] [indexing.md](../specs/indexing.md) 確定
-- [ ] [folder-rules.md](../specs/folder-rules.md) 確定（最低限 pixiv + legacy）
-- [ ] [tags.md](../specs/tags.md) 名前空間リスト確定
+- [x] [indexing.md](../specs/indexing.md) 方針確定 → [phase-1-prep.md](../decisions/phase-1-prep.md)
+- [x] [data-model.md](../specs/data-model.md) 確定（OQ-010 — C, 2026-09-04）
+- [x] [folder-rules.md](../specs/folder-rules.md) pixiv パーサー（OQ-002 — 2026-09-04）
+- [x] [tags.md](../specs/tags.md) namespace（身体部位/ は Phase 1 見送り）
+
+**Phase 1 決定セット確定**（2026-09-04）→ [phase-1-prep.md](../decisions/phase-1-prep.md)
+
+pixiv 同期完了: **36,560** + under.iphone **3,994** = **~40,554 枚**
 
 ## スコープ
 
@@ -34,13 +38,13 @@
 
 | # | タスク | 状態 | 備考 |
 |---|---|---|---|
-| 1.1 | DB スキーマ migration | pending | |
+| 1.1 | DB スキーマ migration | done | `schema/phase1_migration.sql`, `scripts/migrate_db.py` |
 | 1.2 | LanceDB 本番セットアップ | pending | |
-| 1.3 | インデックスワーカー実装 | pending | embedding + OCR + サムネイル |
-| 1.4 | VLM キュー + バッチ処理 | pending | |
-| 1.5 | n8n ワークフロー構築 | pending | フォルダ監視 + スケジュール |
-| 1.6 | folder_rules.yaml 初期設定 | pending | |
-| 1.7 | 4万枚初回投入（embedding/OCR） | pending | |
+| 1.3 | インデックスワーカー実装 | in progress | ingest + thumb + FTS5 + OCR ルーティング + embed + VLM キュー |
+| 1.4 | VLM キュー + バッチ処理 | in progress | `scripts/process_jobs.py`, `src/siftivex/jobs.py` |
+| 1.5 | n8n ワークフロー構築 | pending | ingest / process_jobs を定期実行 |
+| 1.6 | folder_rules.yaml 初期設定 | done | ローカル `config/folder_rules.yaml` + paths.yaml |
+| 1.7 | 4万枚初回投入（embedding/OCR） | in progress | under.iphone 100 枚試走済（95 new） |
 | 1.8 | VLM タグ付け漸進投入 | pending | 夜間バッチ |
 | 1.9 | FastAPI プロジェクト骨格 | pending | Docker Compose 含む |
 

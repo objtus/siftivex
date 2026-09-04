@@ -25,15 +25,34 @@
 
 | ID | 項目 | 優先度 | ステータス | ブロックする Phase | 関連 spec |
 |---|---|---|---|---|---|
-| OQ-001 | 身体部位名前空間の具体的リスト | P1 | open | Phase 0（VLM 検証）, Phase 1 | [tags.md](specs/tags.md) |
-| OQ-002 | ファイル名パーサーの正規表現（pixiv ダウンローダー形式） | P1 | open | Phase 1 | [folder-rules.md](specs/folder-rules.md) |
-| OQ-003 | ファイル名パーサーの正規表現（旧自作アーカイブ形式） | P1 | open | Phase 1 | [folder-rules.md](specs/folder-rules.md) |
-| OQ-004 | 未分類判定の定義（「タグが確定しなかった」の条件） | P1 | open | Phase 0（VLM 検証） | [tags.md](specs/tags.md) |
-| OQ-007 | タグのエイリアス辞書の要否 | P3 | open | — | [tags.md](specs/tags.md) |
+| OQ-001 | 身体部位名前空間の具体的リスト | P2 | discussing | Phase 2 以降可 | [tags.md](specs/tags.md) |
+| — | 雑多なウェブ収集アーカイブ（~30–40k）の同期・取り込み | P2 | open | Phase 2+ | [paths.yaml.example](../config/paths.yaml.example) `web_misc` |
 
 ---
 
 ## 解決済み
+
+### OQ-009: Phase 1 初回投入の範囲と順序
+
+- **決定日**: 2026-09-04
+- **状態**: resolved
+- **反映先**: [phase-1-prep.md](decisions/phase-1-prep.md), [indexing.md](specs/indexing.md)
+
+**決定: B** — under.iphone + pixiv の両方を Phase 1 初回投入対象（合計 ~40,554 枚）。
+
+実行順: under.iphone（~4k、検証）→ pixiv（~36.5k、bulk）。
+
+---
+
+### OQ-010: `image_metadata` を Phase 1 で作るか
+
+- **決定日**: 2026-09-04
+- **状態**: resolved
+- **反映先**: [data-model.md](specs/data-model.md), [folder-rules.md](specs/folder-rules.md)
+
+**決定: C** — テーブル作成 + pixiv ingest 時に sidecar / パーサーから書き込み。
+
+---
 
 ### OQ-005: `image_id` の生成規則
 
@@ -82,13 +101,13 @@
 | 保存場所 | リポジトリ内 `data/phase0/`（gitignore 対象） |
 | 設定 | `config/phase0.yaml` にソースフォルダパスを記載 |
 
-**更新 (2026-09-04)**: 最初は **under.iphone のみ**（Syncthing 同期後）。pixiv / iCloud は後続。
+**更新 (2026-09-04)**: under.iphone + pixiv とも同期済。pixiv は `.../pixiv`（~36,560 枚）。
 
-| 層 | 目標枚数 | パス（サーバー） | 状態 |
+| 層 | 目標枚数 | 備考 | 状態 |
 |---|---|---|---|
-| under.iphone | 300 | `/home/objtus/Sync/siftivex-archive/under.iphone` | **先行** |
-| pixiv ブクマ | 100 | `/home/objtus/Sync/siftivex-archive/pixiv-bookmarks` | 後続 |
-| iCloud Photos | — | `/home/objtus/Sync/siftivex-archive/icloud-photos` | 後回し |
+| under.iphone | 300（Phase 0）/ 3,994（全体） | Phase 0 サンプル | 同期済 |
+| pixiv | 100（Phase 0 予定）/ 36,560（全体） | Phase 1 bulk 対象 | 同期済 |
+| iCloud Photos | — | 後回し | 未同期 |
 
 → 同期手順: [setup/windows-sync.md](setup/windows-sync.md)
 
@@ -117,3 +136,63 @@
 **選定スクリプト**
 
 Phase 0 タスク 0.1 で `scripts/select_phase0_sample.py` を作成し、`config/phase0.yaml` のソースパスから manifest を生成する。
+
+---
+
+### OQ-003: 旧自作アーカイブ（under.iphone）ファイル名パーサー
+
+- **決定日**: 2026-09-04
+- **状態**: resolved
+- **反映先**: [folder-rules.md](specs/folder-rules.md), `config/parsers/under_iphone_legacy_v1.yaml`
+
+形式 `{id}_{tag}-{tag}.ext`。実装: `src/siftivex/filename_tags.py`。
+
+---
+
+### OQ-004: 未分類 / 要再タグ
+
+- **決定日**: 2026-09-04
+- **状態**: resolved
+- **反映先**: [tags.md](specs/tags.md), [phase-1-prep.md](decisions/phase-1-prep.md)
+
+| タグ | 条件 |
+|---|---|
+| `未分類` | VLM 成功だが namespace + flat が空 |
+| `要再タグ` | VLM 失敗。`--retry-errors` で再実行 |
+
+---
+
+### OQ-007: タグのエイリアス辞書
+
+- **決定日**: 2026-09-04
+- **状態**: resolved
+
+`config/tag_vocabulary.yaml` の `aliases` で運用。
+
+---
+
+### OQ-008: OCR ハイブリッド
+
+- **決定日**: 2026-09-04
+- **状態**: resolved
+- **反映先**: [indexing.md](specs/indexing.md), [phase-1-prep.md](decisions/phase-1-prep.md)
+
+ingest: dedicated OCR（プロファイルで manga-ocr / PaddleOCR）。VLM: `ocr_text`。マージ: dedicated 優先。
+
+---
+
+### OQ-002: pixiv ファイル名パーサー / sidecar
+
+- **決定日**: 2026-09-04
+- **状態**: resolved
+- **反映先**: [folder-rules.md](specs/folder-rules.md), `src/siftivex/pixiv_filename.py`
+
+**決定内容**
+
+| 優先 | ソース | 対象 |
+|---|---|---|
+| 1 | `{stem}.pixiv.json` sidecar | 短名移行後 ~8,118 件 |
+| 2 | `parse_pixiv_filename()` | 旧 `date_*` 形式 ~28,451 件 |
+| 3 | なし | `route/pixiv` のみ |
+
+形式バリアント: `_tags_` あり/なし、`id_` / `_` work_id 区切り。実装済みテスト: `tests/test_pixiv_filename.py`

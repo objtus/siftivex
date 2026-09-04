@@ -1,30 +1,40 @@
 # Siftivex アーカイブ パス設定
 # コピー: cp config/paths.yaml.example config/paths.yaml
-# config/paths.yaml は gitignore 対象
+# config/paths.yaml は gitignore 対象（実パスはここにのみ記載）
 
 archives:
   under_iphone:
     label: under.iphone
     route_tag: route/under-iphone
-    windows: "\\\\192.168.11.36\\objtus@protonmail.com\\画像\\under.iphone"
+    windows: "\\\\nas.local\\photos\\under.iphone"
     windows_mapped: "Z:\\under.iphone"   # NAS を Z: にマップした場合
-    server: /home/objtus/Sync/siftivex-archive/under.iphone
+    server: /srv/siftivex-archive/under.iphone
     syncthing_folder_id: siftivex-under-iphone
     status: active                     # active | planned | deferred
 
   pixiv_bookmarks:
     label: pixiv 公開ブクマ
     route_tag: route/pixiv
-    windows: "D:\\公開ブクマ"
-    server: /home/objtus/Sync/siftivex-archive/pixiv-bookmarks
-    syncthing_folder_id: siftivex-pixiv-bookmarks
-    status: planned
+    windows: "D:\\pixiv-bookmarks"
+    server: /srv/siftivex-archive/pixiv
+    syncthing_folder_id: siftivex-pixiv
+    status: active
+
+  web_misc:
+    label: 雑多なウェブ収集
+    route_tag: route/web
+    # Twitter / Google / Pinterest 等（blueprint §取り込みルート）。ファイル名パーサーなし
+    windows: null                      # 未配置 — ローカル paths.yaml に記載
+    server: null
+    syncthing_folder_id: null
+    status: deferred                   # ~30,000–40,000 枚見込み、未同期
+    notes: Phase 1 以降に Syncthing 追加予定。現時点の pixiv 大半は同期済み分のみ
 
   icloud_photos:
     label: iCloud Photos
     route_tag: route/icloud
-    windows: "C:\\Users\\objtus\\Pictures\\iCloud Photos"
-    server: /home/objtus/Sync/siftivex-archive/icloud-photos
+    windows: "C:\\Users\\you\\Pictures\\iCloud Photos"
+    server: /srv/siftivex-archive/icloud-photos
     syncthing_folder_id: siftivex-icloud-photos
     status: deferred                 # 容量大のため後回し
 

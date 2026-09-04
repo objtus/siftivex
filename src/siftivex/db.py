@@ -10,6 +10,8 @@ def get_connection(db_path: Path | None = None) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 30000")
     return conn
 
 
@@ -26,6 +28,38 @@ def init_db(db_path: Path | None = None, schema: str = "phase0.sql") -> Path:
     finally:
         conn.close()
     return path
+
+
+def migrate_phase1(db_path: Path | None = None) -> bool:
+    """Apply Phase 1 additive migration. Returns True if newly applied."""
+    path = db_path or DEFAULT_DB_PATH
+    migration_path = SCHEMA_DIR / "phase1_migration.sql"
+    if not migration_path.exists():
+        raise FileNotFoundError(f"Migration not found: {migration_path}")
+
+    conn = get_connection(path)
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='images'"
+        ).fetchone()
+        if row is None:
+            raise RuntimeError("Phase 0 base schema missing — run init_db first")
+
+        has_migrations = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
+        ).fetchone()
+        if has_migrations:
+            already = conn.execute(
+                "SELECT 1 FROM schema_migrations WHERE version = 'phase1'"
+            ).fetchone()
+            if already:
+                return False
+
+        conn.executescript(migration_path.read_text(encoding="utf-8"))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
 
 
 def log_pipeline_run(

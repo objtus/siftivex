@@ -1,6 +1,6 @@
 # データモデル
 
-> **状態**: 草案（Phase 0 最小版 + Phase 1 拡張を含む）
+> **状態**: Phase 1 確定版（OQ-009/010 resolved）
 > **参照**: [blueprint.md](../../blueprint.md) §用語集, §タグ・OCRの手動修正, §対応ファイル形式
 
 ## 概要
@@ -218,18 +218,24 @@ CREATE INDEX idx_album_members_image ON album_members(image_id);
 
 ### `image_metadata`
 
-ファイル名パーサー由来の構造化メタデータ。Phase 1 以降。
+pixiv 由来の構造化メタデータ。**Phase 1 で作成・書き込み（OQ-010 resolved — C）**。
 
 ```sql
 CREATE TABLE image_metadata (
     image_id    TEXT PRIMARY KEY REFERENCES images(image_id) ON DELETE CASCADE,
     artist      TEXT,
-    work_id     TEXT,
+    work_id     TEXT,               -- pixiv 作品 ID
     posted_at   TEXT,               -- ISO 8601
     source_url  TEXT,
-    extra_json  TEXT                -- パーサー固有フィールド（JSON）
+    extra_json  TEXT                -- title, page, pixiv_tags, original_filename 等
 );
+
+CREATE INDEX idx_image_metadata_work_id ON image_metadata(work_id);
 ```
+
+**書き込み**: ingest 時、route が pixiv の場合のみ。ソース優先順位は [folder-rules.md](folder-rules.md) §pixiv_hybrid（sidecar → ファイル名パーサー）。
+
+under.iphone 等は行を作らない。
 
 ---
 
@@ -309,6 +315,8 @@ Phase 0 で実際に作成するテーブル:
 LanceDB `embeddings` テーブル。
 
 **Phase 0 では作らないもの**: `albums`, `image_metadata`, `index_jobs`（任意）, FTS5
+
+**Phase 1 で追加**: `image_metadata`, `index_jobs`, FTS5 `image_search`
 
 ---
 

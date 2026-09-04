@@ -1,15 +1,18 @@
 # 取り込みプロファイル
 # コピー: cp config/folder_rules.yaml.example config/folder_rules.yaml
+# path_prefix は config/paths.yaml の server パスと一致させる
 
 profiles:
   under_iphone:
     route_tag: route/under-iphone
     parser: under_iphone_legacy_v1
+    ocr_engine: paddle
     fixed_tags: []
 
   pixiv_bookmarks:
     route_tag: route/pixiv
-    parser: pixiv_downloader_v1        # TBD: parsers/pixiv_downloader_v1.yaml
+    metadata: pixiv_hybrid       # sidecar 優先 → pixiv_filename.py
+    ocr_engine: manga
     fixed_tags: []
 
   icloud_photos:
@@ -18,12 +21,11 @@ profiles:
     fixed_tags: []
 
 rules:
-  - path_prefix: /home/objtus/Sync/siftivex-archive/under.iphone
+  - path_prefix: /srv/siftivex-archive/under.iphone
     profile: under_iphone
 
-  # 同期開始後に有効化
-  # - path_prefix: /home/objtus/Sync/siftivex-archive/pixiv-bookmarks
-  #   profile: pixiv_bookmarks
+  - path_prefix: /srv/siftivex-archive/pixiv
+    profile: pixiv_bookmarks
 
-  # - path_prefix: /home/objtus/Sync/siftivex-archive/icloud-photos
+  # - path_prefix: /srv/siftivex-archive/icloud-photos
   #   profile: icloud_photos

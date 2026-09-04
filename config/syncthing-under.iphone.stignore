@@ -1,6 +1,6 @@
 // Syncthing .stignore for under.iphone
 // Windows: Z:\under.iphone\.stignore にコピー
-// サーバー: /home/objtus/Sync/siftivex-archive/under.iphone/.stignore にコピー
+// サーバー: <archive>/under.iphone/.stignore にコピー
 
 // OS 生成ファイル
 Thumbs.db

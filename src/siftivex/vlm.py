@@ -31,6 +31,7 @@ class VlmTagResult:
     namespace_tags: dict[str, str]
     flat_tags: list[str]
     caption: str
+    ocr_text: str
     raw: dict[str, Any]
 
 
@@ -147,10 +148,12 @@ class VlmClient:
             flat = []
         flat_tags = [str(t).strip() for t in flat if str(t).strip()]
         caption = str(raw.get("caption", "")).strip()
+        ocr_text = str(raw.get("ocr_text", "")).strip()
 
         return VlmTagResult(
             namespace_tags=namespace,
             flat_tags=flat_tags,
             caption=caption,
+            ocr_text=ocr_text,
             raw=raw,
         )
