@@ -1,4 +1,4 @@
-.PHONY: help install install-embed install-ocr pipeline list-tasks init-db select-sample import-manifest review build-vocabulary task-0.1 task-0.2 task-0.2b task-0.7 migrate-db ingest process-jobs embed-pending batch-archive
+.PHONY: help install install-embed install-ocr install-api pipeline list-tasks init-db select-sample import-manifest review build-vocabulary task-0.1 task-0.2 task-0.2b task-0.7 migrate-db ingest process-jobs embed-pending batch-archive vlm-overnight api-dev
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -33,6 +33,9 @@ install-embed: install
 
 install-ocr: install
 	$(PIP) install -e ".[ocr]"
+
+install-api: install
+	$(PIP) install -e ".[api]"
 
 list-tasks:
 	$(PY) -m siftivex.pipeline --list
@@ -74,6 +77,14 @@ embed-pending:
 BATCH_ARCHIVE ?= pixiv_bookmarks
 batch-archive:
 	$(PY) scripts/run_archive_batch.py --archive "$(BATCH_ARCHIVE)"
+
+VLM_ROUTE ?= route/under-iphone
+VLM_BATCH ?= 10
+vlm-overnight:
+	nohup $(PY) scripts/run_vlm_overnight.py --route "$(VLM_ROUTE)" --batch-size $(VLM_BATCH) >> data/batch/vlm-overnight.log 2>&1 &
+
+api-dev:
+	$(PY) -m siftivex.api.main --host 127.0.0.1 --port 8787
 
 import-manifest:
 	$(PY) scripts/import_manifest.py

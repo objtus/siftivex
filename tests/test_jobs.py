@@ -82,6 +82,23 @@ def test_process_ocr_job(db_conn: sqlite3.Connection, tmp_path: Path, monkeypatc
     assert row[0] == "test ocr"
 
 
+def test_fetch_pending_jobs_filters_route(db_conn: sqlite3.Connection, tmp_path: Path):
+    img_a = tmp_path / "a.png"
+    img_b = tmp_path / "b.png"
+    Image.new("RGB", (16, 16), (100, 0, 0)).save(img_a)
+    Image.new("RGB", (16, 16), (0, 100, 0)).save(img_b)
+
+    from siftivex.ingest import ingest_file
+
+    r_a = ingest_file(img_a, db_conn, skip_thumbnails=True, skip_ocr=True, route_tag="route/a")
+    r_b = ingest_file(img_b, db_conn, skip_thumbnails=True, skip_ocr=True, route_tag="route/b")
+    db_conn.commit()
+
+    jobs = fetch_pending_jobs(db_conn, job_type="vlm_tag", route_tag="route/a", limit=10)
+    assert len(jobs) == 1
+    assert jobs[0].image_id == r_a.image_id
+
+
 def test_run_jobs_vlm(db_conn: sqlite3.Connection, tmp_path: Path):
     img = tmp_path / "d.png"
     _make_image(img)

@@ -28,6 +28,7 @@ def main() -> int:
         help="Job type to process",
     )
     parser.add_argument("--limit", type=int, default=10, help="Max jobs per run")
+    parser.add_argument("--route", type=str, default=None, help="Filter by images.route_tag")
     parser.add_argument("--dry-run", action="store_true", help="List pending jobs only")
     args = parser.parse_args()
 
@@ -37,7 +38,9 @@ def main() -> int:
     if args.dry_run:
         from siftivex.jobs import fetch_pending_jobs
 
-        jobs = fetch_pending_jobs(conn, job_type=job_type, limit=args.limit)
+        jobs = fetch_pending_jobs(
+            conn, job_type=job_type, route_tag=args.route, limit=args.limit
+        )
         for job in jobs:
             print(f"pending\t{job.job_id}\t{job.job_type}\t{job.image_id}")
         conn.close()
@@ -53,6 +56,7 @@ def main() -> int:
         results = run_jobs(
             conn,
             job_type=job_type,
+            route_tag=args.route,
             limit=args.limit,
             folder_rules=folder_rules,
             vlm_client=vlm_client,

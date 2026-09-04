@@ -26,9 +26,14 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.6.0",
 ]
+api = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+]
 
 [project.scripts]
 siftivex-pipeline = "siftivex.pipeline:main"
+siftivex-api = "siftivex.api.main:main"
 
 [build-system]
 requires = ["setuptools>=68"]

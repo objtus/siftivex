@@ -1,0 +1,16 @@
+# Siftivex API — add to existing objtus-server compose or run standalone
+# Usage: docker compose -f docker-compose.siftivex.yaml up -d
+
+services:
+  siftivex-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config:ro
+    environment:
+      - SIFTIVEX_DEVICE=cuda:1
+    restart: unless-stopped

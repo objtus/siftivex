@@ -44,28 +44,28 @@ def fetch_pending_jobs(
     conn: sqlite3.Connection,
     *,
     job_type: str | None = None,
+    route_tag: str | None = None,
     limit: int = 10,
 ) -> list[JobRow]:
-    if job_type:
-        query = """
-            SELECT job_id, image_id, job_type, attempts
-            FROM index_jobs
-            WHERE status = 'pending' AND job_type = ?
-            ORDER BY job_id
-            LIMIT ?
+    base = """
+        SELECT j.job_id, j.image_id, j.job_type, j.attempts
+        FROM index_jobs j
+    """
+    if route_tag:
+        base += """
+        JOIN images i ON i.image_id = j.image_id
         """
-        rows = conn.execute(query, (job_type, limit)).fetchall()
-    else:
-        rows = conn.execute(
-            """
-            SELECT job_id, image_id, job_type, attempts
-            FROM index_jobs
-            WHERE status = 'pending'
-            ORDER BY job_id
-            LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
+    clauses = ["j.status = 'pending'"]
+    params: list = []
+    if job_type:
+        clauses.append("j.job_type = ?")
+        params.append(job_type)
+    if route_tag:
+        clauses.append("i.route_tag = ?")
+        params.append(route_tag)
+    query = base + " WHERE " + " AND ".join(clauses) + " ORDER BY j.job_id LIMIT ?"
+    params.append(limit)
+    rows = conn.execute(query, params).fetchall()
     return [
         JobRow(job_id=r[0], image_id=r[1], job_type=r[2], attempts=r[3])
         for r in rows
@@ -207,11 +207,12 @@ def run_jobs(
     conn: sqlite3.Connection,
     *,
     job_type: str | None = None,
+    route_tag: str | None = None,
     limit: int = 10,
     folder_rules: FolderRules | None = None,
     vlm_client: VlmClient | None = None,
 ) -> list[JobResult]:
-    jobs = fetch_pending_jobs(conn, job_type=job_type, limit=limit)
+    jobs = fetch_pending_jobs(conn, job_type=job_type, route_tag=route_tag, limit=limit)
     results: list[JobResult] = []
 
     for job in jobs:

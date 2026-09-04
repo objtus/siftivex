@@ -42,11 +42,11 @@ pixiv 同期完了: **36,560** + under.iphone **3,994** = **~40,554 枚**
 | 1.2 | LanceDB 本番セットアップ | pending | |
 | 1.3 | インデックスワーカー実装 | in progress | ingest + thumb + FTS5 + OCR ルーティング + embed + VLM キュー |
 | 1.4 | VLM キュー + バッチ処理 | in progress | `scripts/process_jobs.py`, `src/siftivex/jobs.py` |
-| 1.5 | n8n ワークフロー構築 | pending | ingest / process_jobs を定期実行 |
+| 1.5 | n8n ワークフロー構築 | in progress | `docs/setup/n8n-indexing.md` |
 | 1.6 | folder_rules.yaml 初期設定 | done | ローカル `config/folder_rules.yaml` + paths.yaml |
-| 1.7 | 4万枚初回投入（embedding/OCR） | in progress | under.iphone 100 枚試走済（95 new） |
-| 1.8 | VLM タグ付け漸進投入 | pending | 夜間バッチ |
-| 1.9 | FastAPI プロジェクト骨格 | pending | Docker Compose 含む |
+| 1.7 | 4万枚初回投入（embedding/OCR） | in progress | under.iphone done、pixiv batch 実行中 |
+| 1.8 | VLM タグ付け漸進投入 | in progress | `scripts/run_vlm_overnight.py` |
+| 1.9 | FastAPI プロジェクト骨格 | in progress | `src/siftivex/api/`, `docker-compose.siftivex.yaml` |
 
 ## 完了条件
 
