@@ -1,0 +1,24 @@
+// Syncthing .stignore for under.iphone
+// Windows: Z:\under.iphone\.stignore にコピー
+// サーバー: /home/objtus/Sync/siftivex-archive/under.iphone/.stignore にコピー
+
+// OS 生成ファイル
+Thumbs.db
+Desktop.ini
+.DS_Store
+._*
+
+// Syncthing
+.stfolder
+.stignore
+.stversions
+
+// 動画（画像アーカイブ対象外）
+*.mp4
+*.mov
+*.avi
+*.mkv
+
+// 編集ソース（対象外）
+*.psd
+*.clip

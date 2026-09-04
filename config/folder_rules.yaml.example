@@ -1,0 +1,29 @@
+# 取り込みプロファイル
+# コピー: cp config/folder_rules.yaml.example config/folder_rules.yaml
+
+profiles:
+  under_iphone:
+    route_tag: route/under-iphone
+    parser: null                       # ファイル名パーサーなし
+    fixed_tags: []
+
+  pixiv_bookmarks:
+    route_tag: route/pixiv
+    parser: pixiv_downloader_v1        # TBD: parsers/pixiv_downloader_v1.yaml
+    fixed_tags: []
+
+  icloud_photos:
+    route_tag: route/icloud
+    parser: null
+    fixed_tags: []
+
+rules:
+  - path_prefix: /home/objtus/Sync/siftivex-archive/under.iphone
+    profile: under_iphone
+
+  # 同期開始後に有効化
+  # - path_prefix: /home/objtus/Sync/siftivex-archive/pixiv-bookmarks
+  #   profile: pixiv_bookmarks
+
+  # - path_prefix: /home/objtus/Sync/siftivex-archive/icloud-photos
+  #   profile: icloud_photos

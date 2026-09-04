@@ -6,8 +6,9 @@
 
 | 項目 | 状態 |
 |---|---|
-| フェーズ | 設計（Phase 0 着手前） |
-| コード | 未着手 |
+| フェーズ | 設計 + Phase 0 パイプライン（embedding まで） |
+| コード | Phase 0 進行中 |
+| 画像同期 | under.iphone 同期済（3,994枚） |
 | 最終更新 | 2026-09-04 |
 
 ## ドキュメントの読み方
@@ -61,6 +62,16 @@ make pipeline
 ```
 
 詳細: [docs/plans/phase-0-pipeline.md](docs/plans/phase-0-pipeline.md)
+
+## 画像同期（Windows ↔ サーバー）
+
+```bash
+# 1. Syncthing で under.iphone を同期（手順書参照）
+# 2. 同期確認後
+make task-0.1 && make task-0.2b && make pipeline
+```
+
+手順: [docs/setup/windows-sync.md](docs/setup/windows-sync.md)
 
 ## その他
 

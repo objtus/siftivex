@@ -35,6 +35,8 @@
 | `route/pixiv` | pixiv ダウンローダー経由 |
 | `route/legacy` | 旧自作アーカイブ |
 | `route/web` | Twitter/Google/Pinterest 等 |
+| `route/under-iphone` | NAS under.iphone アーカイブ |
+| `route/icloud` | iCloud Photos（後回し） |
 
 （TBD: 完全なリスト）
 

@@ -82,15 +82,15 @@
 | 保存場所 | リポジトリ内 `data/phase0/`（gitignore 対象） |
 | 設定 | `config/phase0.yaml` にソースフォルダパスを記載 |
 
-**層化サンプリング**
+**更新 (2026-09-04)**: 最初は **under.iphone のみ**（Syncthing 同期後）。pixiv / iCloud は後続。
 
-取り込みルートごとに均等配分を目標とする（フォルダが存在しないルートはスキップ可）。
+| 層 | 目標枚数 | パス（サーバー） | 状態 |
+|---|---|---|---|
+| under.iphone | 300 | `/home/objtus/Sync/siftivex-archive/under.iphone` | **先行** |
+| pixiv ブクマ | 100 | `/home/objtus/Sync/siftivex-archive/pixiv-bookmarks` | 後続 |
+| iCloud Photos | — | `/home/objtus/Sync/siftivex-archive/icloud-photos` | 後回し |
 
-| 層 | 目標枚数 | 選定基準 |
-|---|---|---|
-| pixiv 系 | 100 | `route/pixiv` 相当フォルダからランダム |
-| 旧自作アーカイブ | 100 | `route/legacy` 相当フォルダからランダム |
-| web 収集 | 100 | `route/web` 相当フォルダからランダム |
+→ 同期手順: [setup/windows-sync.md](setup/windows-sync.md)
 
 各層内で以下のバリエーションを意図的に含める:
 

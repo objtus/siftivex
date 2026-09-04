@@ -33,13 +33,13 @@
 
 | # | タスク | 状態 | 備考 |
 |---|---|---|---|
-| 0.1 | 検証用データセット選定（300枚） | ready | `make task-0.1` |
-| 0.2 | 最小 DB スキーマ作成 | ready | `make task-0.2` |
-| 0.2b | manifest → DB 投入 | ready | `make task-0.2b` |
-| 0.3 | CLIP embedding スクリプト | stub | `scripts/embed.py` |
-| 0.4 | LanceDB 書き込み + 検索テスト | stub | `scripts/search_test.py` |
-| 0.5 | VLM タグ付けスクリプト | stub | `scripts/vlm_tag.py` |
-| 0.6 | 処理時間計測・記録 | pending | |
+| 0.1 | 検証用データセット選定 | done | under.iphone 300枚（全3994枚中） |
+| 0.2 | 最小 DB スキーマ作成 | done | |
+| 0.2b | manifest → DB 投入 | done | 299 images |
+| 0.3 | CLIP embedding スクリプト | done | 298枚成功、1枚スキップ |
+| 0.4 | LanceDB 書き込み + 検索テスト | done | under.iphone で動作確認済 |
+| 0.5 | VLM タグ付けスクリプト | stub | llama-swap 接続待ち |
+| 0.6 | 処理時間計測・記録 | done | `data/phase0/results/embed_timing.json` |
 | 0.7 | タグ精度の目視評価 | pending | サンプル 20〜30 枚 |
 
 → パイプライン実行方法: [phase-0-pipeline.md](phase-0-pipeline.md)

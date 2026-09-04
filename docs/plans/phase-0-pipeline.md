@@ -25,6 +25,9 @@ cp config/phase0.yaml.example config/phase0.yaml
 # 2. Python 環境
 make install          # 基本依存
 make install-embed    # embedding 用（0.3 以降）
+
+# GPU: CLIP は cuda:1 をデフォルト（cuda:0 は VLM 用）
+# 変更: SIFTIVEX_DEVICE=cuda:0 make pipeline
 ```
 
 ## 実行
@@ -65,6 +68,6 @@ make task-0.2b
 | 0.1 | `scripts/select_phase0_sample.py` | 実装済 |
 | 0.2 | `scripts/init_db.py` | 実装済 |
 | 0.2b | `scripts/import_manifest.py` | 実装済 |
-| 0.3 | `scripts/embed.py` | stub |
-| 0.4 | `scripts/search_test.py` | stub |
+| 0.3 | `scripts/embed.py` | 実装済 |
+| 0.4 | `scripts/search_test.py` | 実装済 |
 | 0.5 | `scripts/vlm_tag.py` | stub |

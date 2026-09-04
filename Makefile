@@ -4,6 +4,7 @@ PYTHON ?= python3
 VENV ?= .venv
 PIP := $(VENV)/bin/pip
 PY := $(VENV)/bin/python
+export SIFTIVEX_DEVICE ?= cuda:1
 
 help:
 	@echo "Siftivex Phase 0 pipeline"

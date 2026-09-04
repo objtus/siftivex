@@ -1,5 +1,7 @@
 # ローカル設定（パスを含む）
 config/phase0.yaml
+config/paths.yaml
+config/folder_rules.yaml
 
 # データ（DB・ベクトル・検証セット）
 data/siftivex.db

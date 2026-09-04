@@ -1,0 +1,37 @@
+# Siftivex アーカイブ パス設定
+# コピー: cp config/paths.yaml.example config/paths.yaml
+# config/paths.yaml は gitignore 対象
+
+archives:
+  under_iphone:
+    label: under.iphone
+    route_tag: route/under-iphone
+    windows: "\\\\192.168.11.36\\objtus@protonmail.com\\画像\\under.iphone"
+    windows_mapped: "Z:\\under.iphone"   # NAS を Z: にマップした場合
+    server: /home/objtus/Sync/siftivex-archive/under.iphone
+    syncthing_folder_id: siftivex-under-iphone
+    status: active                     # active | planned | deferred
+
+  pixiv_bookmarks:
+    label: pixiv 公開ブクマ
+    route_tag: route/pixiv
+    windows: "D:\\公開ブクマ"
+    server: /home/objtus/Sync/siftivex-archive/pixiv-bookmarks
+    syncthing_folder_id: siftivex-pixiv-bookmarks
+    status: planned
+
+  icloud_photos:
+    label: iCloud Photos
+    route_tag: route/icloud
+    windows: "C:\\Users\\objtus\\Pictures\\iCloud Photos"
+    server: /home/objtus/Sync/siftivex-archive/icloud-photos
+    syncthing_folder_id: siftivex-icloud-photos
+    status: deferred                 # 容量大のため後回し
+
+# Phase 0 検証用: active なアーカイブからサンプリング
+phase0:
+  sample_size: 300
+  seed: 42
+  sources:
+    - archive: under_iphone
+      count: 300
