@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS image_tags (
     image_id    TEXT    NOT NULL REFERENCES images(image_id) ON DELETE CASCADE,
     tag         TEXT    NOT NULL,
     source      TEXT    NOT NULL
-                CHECK (source IN ('auto', 'manual_added', 'manual_removed')),
+                CHECK (source IN ('auto', 'filename', 'manual_added', 'manual_removed')),
     created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (image_id, tag, source)
 );

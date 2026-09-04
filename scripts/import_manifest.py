@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from siftivex.db import get_connection  # noqa: E402
 from siftivex.ids import content_hash, image_id_from_hash  # noqa: E402
 from siftivex.paths import DEFAULT_DB_PATH, PHASE0_MANIFEST  # noqa: E402
+from siftivex.tags_db import apply_filename_tags  # noqa: E402
 
 
 def iso_mtime(path: Path) -> str:
@@ -72,6 +73,7 @@ def import_entry(conn, entry: dict) -> str:
             iso_mtime(path),
         ),
     )
+    apply_filename_tags(conn, image_id, path.name)
     return image_id
 
 

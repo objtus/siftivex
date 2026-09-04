@@ -4,7 +4,7 @@
 profiles:
   under_iphone:
     route_tag: route/under-iphone
-    parser: null                       # ファイル名パーサーなし
+    parser: under_iphone_legacy_v1
     fixed_tags: []
 
   pixiv_bookmarks:

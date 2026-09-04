@@ -1,0 +1,12 @@
+# 旧自作アーカイブ形式（under.iphone 等）
+# ファイル名: {id}_{tag}-{tag}-... または {uuid}_{tag}-{tag}
+# 例: IMG3078_2D-背景-空.JPG, 15283_1-風景-山-雲.jpg
+
+name: under_iphone_legacy_v1
+description: Legacy filename hyphen-tags after underscore separator
+
+pattern: "^.+_(.+)$"
+tag_separator: "-"
+skip_token_patterns:
+  - "^\\d+$"           # 0265 等の ID 残片
+  - "^[0-9A-Fa-f]{6,8}$"  # ハッシュ断片

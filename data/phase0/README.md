@@ -11,14 +11,26 @@ Phase 0 の基盤検証に使う **300 枚** の画像サブセット。
 
 | ファイル | 説明 |
 |---|---|
-| `manifest.json` | 選定された画像のパス一覧（`scripts/select_phase0_sample.py` で生成） |
-| `results/` | 検証結果（処理時間・精度メモ） |
+| `manifest.json` | 選定された画像のパス一覧（gitignore） |
+| `results/` | 検証結果（処理時間等、gitignore） |
+| `review/` | 目視評価 HTML（gitignore） |
 
 ## 選定手順
 
 1. `config/phase0.yaml` にソースフォルダパスを設定
 2. `python scripts/select_phase0_sample.py` を実行
 3. 生成された `manifest.json` を目視確認
+
+## 目視評価（タスク 0.7）
+
+```bash
+make review
+# → data/phase0/review/index.html をブラウザで開く
+```
+
+- サムネイルは HTML に埋め込み（ファイル名付き画像をリポジトリに含めない）
+- ファイル名は折りたたみ内に表示（ローカル確認用）
+- 評価メモ欄はブラウザ内のみ（未保存）
 
 ## manifest 形式
 

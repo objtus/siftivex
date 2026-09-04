@@ -23,8 +23,11 @@ cp config/phase0.yaml.example config/phase0.yaml
 # config/phase0.yaml の source パスを編集
 
 # 2. Python 環境
-make install          # 基本依存
-make install-embed    # embedding 用（0.3 以降）
+make install
+make install-embed
+
+# 3. タグ語彙（アーカイブ同期後、VLM 実行前）
+make build-vocabulary
 
 # GPU: CLIP は cuda:1 をデフォルト（cuda:0 は VLM 用）
 # 変更: SIFTIVEX_DEVICE=cuda:0 make pipeline
@@ -70,4 +73,4 @@ make task-0.2b
 | 0.2b | `scripts/import_manifest.py` | 実装済 |
 | 0.3 | `scripts/embed.py` | 実装済 |
 | 0.4 | `scripts/search_test.py` | 実装済 |
-| 0.5 | `scripts/vlm_tag.py` | stub |
+| 0.5 | `scripts/vlm_tag.py` | 実装済（優先語彙対応） |

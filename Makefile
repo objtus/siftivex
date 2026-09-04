@@ -1,4 +1,4 @@
-.PHONY: help install install-embed pipeline list-tasks init-db select-sample import-manifest task-0.1 task-0.2 task-0.2b
+.PHONY: help install install-embed pipeline list-tasks init-db select-sample import-manifest review build-vocabulary task-0.1 task-0.2 task-0.2b task-0.7
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -16,6 +16,8 @@ help:
 	@echo "  make select-sample  Task 0.1: generate manifest"
 	@echo "  make init-db        Task 0.2: initialize SQLite"
 	@echo "  make import-manifest Task 0.2b: import manifest to DB"
+	@echo "  make review         Task 0.7: generate tag review HTML"
+	@echo "  make build-vocabulary  Build tag_vocabulary.yaml from archive filenames"
 
 $(VENV)/bin/activate:
 	$(PYTHON) -m venv $(VENV)
@@ -44,3 +46,11 @@ import-manifest:
 task-0.1: select-sample
 task-0.2: init-db
 task-0.2b: import-manifest
+
+review:
+	$(PY) scripts/generate_review.py
+
+task-0.7: review
+
+build-vocabulary:
+	$(PY) scripts/build_tag_vocabulary.py

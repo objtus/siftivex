@@ -1,0 +1,12 @@
+# VLM 設定（llama.cpp / llama-server）
+# コピー: cp config/vlm.yaml.example config/vlm.yaml
+
+base_url: http://127.0.0.1:8081/v1
+model: /opt/llama.cpp/models/Qwen3.6-35B-A3B-uncensored-heretic-APEX-I-Compact.gguf
+
+max_tokens: 768
+temperature: 0.1
+max_image_size: 768
+jpeg_quality: 85
+enable_thinking: false
+timeout_seconds: 180

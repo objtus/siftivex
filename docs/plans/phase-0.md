@@ -1,6 +1,6 @@
 # Phase 0: 基盤検証
 
-> **状態**: スケルトン
+> **状態**: 完了（Go: Phase 1 へ）
 > **参照**: [blueprint.md](../../blueprint.md) §開発フロー
 
 ## 目的
@@ -38,18 +38,40 @@
 | 0.2b | manifest → DB 投入 | done | 299 images |
 | 0.3 | CLIP embedding スクリプト | done | 298枚成功、1枚スキップ |
 | 0.4 | LanceDB 書き込み + 検索テスト | done | under.iphone で動作確認済 |
-| 0.5 | VLM タグ付けスクリプト | stub | llama-swap 接続待ち |
-| 0.6 | 処理時間計測・記録 | done | `data/phase0/results/embed_timing.json` |
-| 0.7 | タグ精度の目視評価 | pending | サンプル 20〜30 枚 |
+| 0.5 | VLM タグ付けスクリプト | done | 293/299枚（Qwen3.6 35B, ~3.0s/img, 6 errors） |
+| 0.6 | 処理時間計測・記録 | done | embed + vlm timing JSON |
+| 0.7 | タグ精度の目視評価 | done | `make review` → 25枚サンプル HTML（2026-09-04） |
 
 → パイプライン実行方法: [phase-0-pipeline.md](phase-0-pipeline.md)
 
 ## 完了条件
 
-- [ ] 数百枚の embedding が LanceDB に格納され、自然言語クエリで意味検索が動く
-- [ ] 同サブセットの VLM タグ付けが SQLite に保存され、内容を目視確認できる
-- [ ] 1枚あたりの処理時間が記録され、4万枚 extrapolation が算出できる
-- [ ] Phase 1 への Go/No-Go 判断ができる
+- [x] 数百枚の embedding が LanceDB に格納され、自然言語クエリで意味検索が動く（298枚、`search_test.py` 確認済）
+- [x] 同サブセットの VLM タグ付けが SQLite に保存され、内容を目視確認できる（298枚 auto タグ、`review/index.html`）
+- [x] 1枚あたりの処理時間が記録され、4万枚 extrapolation が算出できる（下表）
+- [x] Phase 1 への Go/No-Go 判断ができる（**Go**）
+
+## 処理時間 extrapolation（4万枚）
+
+| 工程 | 実測（Phase 0） | 4万枚見積 | 備考 |
+|---|---|---|---|
+| CLIP embed | 0.037 s/枚（298枚） | **~25 分** | ViT-B-32, cuda:1 |
+| VLM タグ | 2.96 s/枚（293枚） | **~33 時間** | Qwen3.6 35B, cuda:0 |
+| 合計（直列） | — | **~34 時間** | 1枚破損・JSON エラー数枚は再実行で回収可 |
+
+→ 詳細: `data/phase0/results/embed_timing.json`, `vlm_timing.json`
+
+## Go/No-Go（2026-09-04）
+
+| 観点 | 結果 | メモ |
+|---|---|---|
+| パイプライン | Go | manifest → DB → embed → VLM → review まで通過 |
+| 意味検索 | Go | LanceDB ANN 動作確認済 |
+| VLM タグ品質 | Go（条件付き） | 語彙・tag_notes 調整後は目視で許容範囲。JSON パース失敗は ~2%（リトライで大半回復） |
+| 処理時間 | Go | 4万枚 VLM が overnight バッチ想定内 |
+| 既知問題 | 記録 | IMG5058.JPG 破損、VLM JSON エラー 6件/299 |
+
+**判断: Phase 1 へ進む。** 本番投入前に route 別語彙・`身体部位/` namespace は Phase 1 で検討。
 
 ## 成果物
 

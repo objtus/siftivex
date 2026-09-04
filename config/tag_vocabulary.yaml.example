@@ -1,0 +1,45 @@
+# タグ語彙（ファイル名タグから自動生成 + 手動追加分）
+# 生成: make build-vocabulary
+# ローカル実体: config/tag_vocabulary.yaml（gitignore・環境ごとに編集）
+# manual_flat_tags / tag_notes / aliases / exclude_flat_tags は再生成しても保持される
+
+version: 1
+min_count: 2
+
+aliases:
+  眼鏡: メガネ
+  スクリーンショット: スクショ
+
+# namespace_tags と重複する flat タグは優先語彙・VLM 出力から除外
+exclude_flat_tags:
+  - 2D
+
+tag_notes:
+  2D: flat_tags に付けない。2D作品は 種類/（イラスト・漫画コマ等）で表現。
+  修正: 画像の加工・編集全般（フィルタ、レタッチ、色調整、トリミング等）。
+
+manual_flat_tags:
+  - 風景
+  - 建物
+  - 人物
+  - 動物
+  - 室内
+  - 屋外
+  - 線画
+  - カラー
+  - モノクロ
+
+noise_patterns:
+  - "^\\d+$"
+  - "^[0-9A-Fa-f]{6,8}$"
+  - "^[0-9A-Za-z]$"
+  - "^[0-9A-Za-z]{4,}$"
+
+# build_tag_vocabulary.py がファイル名タグ集計で上書きする
+preferred_flat_tags:
+  - tag: 風景
+    count: 120
+  - tag: 建物
+    count: 85
+  - tag: 人物
+    count: 64

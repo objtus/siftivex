@@ -23,8 +23,38 @@
 
 ### フラットタグ
 
-衣装、髪型、表情、構図の特徴、素材感など。VLM が自由生成。
-表記ゆれは一括リネーム操作で運用カバー。
+衣装、髪型、表情、構図の特徴、素材感など。
+
+- **優先語彙**: ファイル名タグから自動生成（`config/tag_vocabulary.yaml`）
+- VLM は優先語彙を exact match で使う（システムプロンプトに注入）
+- 語彙に無い概念も**自由に追加可**（件数制限なし）
+- 表記ゆれは `aliases` で手動統合 → 再生成
+- `namespace_tags` と重複する flat タグは `exclude_flat_tags` で除外（例: `2D` → `種類/`）
+
+### タグの意味（tag_notes）
+
+多義語や namespace と重複しやすい語は `tag_notes` で VLM に明示する。定義の実体は gitignore された `config/tag_vocabulary.yaml` に置く。
+
+| タグ | 意味（例） |
+|---|---|
+| 2D | flat 不可 → `種類/`（イラスト等）で表現 |
+| 修正 | 画像加工全般 |
+
+### 優先語彙（tag_vocabulary）
+
+```bash
+make build-vocabulary   # under.iphone 全件スキャン → config/tag_vocabulary.yaml
+```
+
+| ファイル | 内容 |
+|---|---|
+| `config/tag_vocabulary.yaml` | 生成物（gitignore） |
+| `config/tag_vocabulary.yaml.example` | スキーマ例 + manual_flat_tags |
+
+生成後、VLM プロンプトの【優先語彙】ブロックに反映される。
+ファイル名タグは正規化後 **priority_tags** として毎画像に渡す。
+
+→ 実装: [tag_vocabulary.py](../../src/siftivex/tag_vocabulary.py), [build_tag_vocabulary.py](../../scripts/build_tag_vocabulary.py)
 
 ### ルートタグ（予約）
 
@@ -44,13 +74,34 @@
 
 | タグ | 意味 | 付与方法 |
 |---|---|---|
-| `未分類` | VLM タグ付け未確定 | 自動（条件 TBD → [OQ-004](../open-questions.md)） |
+| `未分類` | VLM タグ付け未確定 | 自動（namespace/flat が空の場合） |
 
 ## VLM プロンプト
 
-（TBD: システムプロンプト全文、JSON 出力形式、temperature 等）
+- **モデル**: Qwen3.6 35B（llama.cpp / port 8081）
+- **設定**: `config/vlm.yaml`
+- **thinking**: 無効（`enable_thinking: false`）
 
-### 出力形式（草案）
+### タグ生成の2層
+
+| 層 | source | 由来 |
+|---|---|---|
+| ファイル名タグ | `filename` | 旧自作アーカイブ形式パーサー（参考・保持） |
+| VLM タグ | `auto` | Qwen VLM が画像から生成（namespace + flat） |
+
+ファイル名タグは正規化後 **priority_tags** として VLM に渡す。VLM 再実行時も `filename` ソースとして保持。
+
+### ファイル名パーサー（under.iphone / 旧形式）
+
+```
+IMG3078_2D-背景-空.JPG       → 2D, 背景, 空
+IMG_0265-建物-夕方-横.JPG    → 建物, 夕方, 横
+15283_1-風景-山-雲.jpg       → 風景, 山, 雲
+```
+
+→ 実装: [filename_tags.py](../../src/siftivex/filename_tags.py), [under_iphone_legacy_v1.yaml](../../config/parsers/under_iphone_legacy_v1.yaml)
+
+### 出力形式
 
 ```json
 {

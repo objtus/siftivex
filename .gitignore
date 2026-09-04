@@ -2,12 +2,15 @@
 config/phase0.yaml
 config/paths.yaml
 config/folder_rules.yaml
+config/vlm.yaml
+config/tag_vocabulary.yaml
 
-# データ（DB・ベクトル・検証セット）
-data/siftivex.db
-data/lance/
-data/phase0/manifest.json
-data/phase0/results/
+# ローカルデータ一式
+# manifest / DB / 評価 HTML 等にタグ付きファイル名・絶対パスが含まれるためコミットしない
+data/
+!data/phase0/
+data/phase0/*
+!data/phase0/README.md
 
 # Python
 __pycache__/
