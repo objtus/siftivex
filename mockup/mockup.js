@@ -344,7 +344,7 @@ async function fetchWorkContext(imageId, item = null) {
   if (!state.useApi) return mockWorkContext(imageId);
 
   let data = item;
-  if (!data?.metadata && !data?.work) {
+  if (data?.metadata == null && data?.work == null) {
     try {
       const res = await fetch(`/api/images/${encodeURIComponent(imageId)}`);
       if (!res.ok) return null;
@@ -463,13 +463,13 @@ async function fetchWorkPages(workId) {
 }
 
 async function resolveDetailItem(list) {
-  const fromList = state.detailIndex >= 0 ? list[state.detailIndex] : null;
-  if (fromList?.image_id === state.activeId) return fromList;
-  const local = IMAGES.find((i) => i.image_id === state.activeId);
-  if (local) return local;
-  const fromApi = state.apiImages?.find((i) => i.image_id === state.activeId);
-  if (fromApi) return fromApi;
-  if (!state.useApi || !state.activeId) return null;
+  if (!state.useApi) {
+    const fromList = state.detailIndex >= 0 ? list[state.detailIndex] : null;
+    if (fromList?.image_id === state.activeId) return fromList;
+    return IMAGES.find((i) => i.image_id === state.activeId) ?? null;
+  }
+
+  if (!state.activeId) return null;
   try {
     const res = await fetch(`/api/images/${encodeURIComponent(state.activeId)}`);
     if (!res.ok) return null;
@@ -480,7 +480,9 @@ async function resolveDetailItem(list) {
       preview_url: data.has_preview ? `/api/images/${data.image_id}/preview` : null,
     };
   } catch {
-    return null;
+    const fromList = state.detailIndex >= 0 ? list[state.detailIndex] : null;
+    if (fromList?.image_id === state.activeId) return fromList;
+    return state.apiImages?.find((i) => i.image_id === state.activeId) ?? null;
   }
 }
 
