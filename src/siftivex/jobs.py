@@ -236,7 +236,11 @@ def run_jobs(
         except Exception as exc:
             outcome = JobResult(job.job_id, job.image_id, job.job_type, ok=False, error=str(exc))
             if job.job_type == "vlm_tag":
-                mark_vlm_retry_needed(conn, job.image_id)
+                try:
+                    mark_vlm_retry_needed(conn, job.image_id)
+                except sqlite3.OperationalError:
+                    # Avoid crashing the batch when another writer holds the DB.
+                    pass
 
         if outcome.ok:
             mark_job_done(conn, job.job_id)

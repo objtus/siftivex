@@ -1,6 +1,6 @@
 # Phase 1 着手前の決定事項
 
-> **更新**: 2026-09-04（pixiv 同期完了・規模確定後）
+> **更新**: 2026-09-06（初回 bulk embed 完了後）
 > **目的**: Phase 1 実装前に決めた方針を1か所に集約（平易な説明付き）
 
 ## 決定チェックリスト（確定）
@@ -179,6 +179,21 @@ under.iphone は `image_metadata` 行なし（NULL）。
 ### エイリアス（OQ-007 resolved）
 
 `config/tag_vocabulary.yaml` の `aliases`。
+
+---
+
+## 初回 bulk 投入 実績（2026-09-05〜06）
+
+| 工程 | under.iphone | pixiv | 備考 |
+|---|---|---|---|
+| ingest | 3,926 | 36,394 | pixiv アーカイブ 36,560 のうち hash 重複 166 |
+| CLIP embed | 3,924 / 3,926 | 36,381 / 36,394 | 未 embed は破損画像・webm 等（計 15 枚 skip） |
+| VLM | 3,901 caption | **Phase 2 へ** | overnight ~15h。JSON 失敗 ~25 枚は手動/再試行可 |
+| LanceDB | — | — | 合計 ~40,505 行 |
+
+**決定（2026-09-05）**: pixiv 全件 VLM（~36k）は Phase 1 必須としない。CLIP + ファイル名タグで検索可能なため [phase-2.md](../plans/phase-2.md) で漸進投入（例: 500枚/日）。
+
+**教訓**: `embed_pending` と `run_vlm_overnight` の同時実行は DB ロックで embed が停止しやすい。順序実行を推奨。
 
 ---
 

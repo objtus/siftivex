@@ -68,13 +68,21 @@ def main() -> int:
 
                 conn = get_connection(args.db)
                 try:
-                    results = run_jobs(
-                        conn,
-                        job_type="vlm_tag",
-                        route_tag=args.route,
-                        limit=batch_limit,
-                        vlm_client=client,
-                    )
+                    for attempt in range(5):
+                        try:
+                            results = run_jobs(
+                                conn,
+                                job_type="vlm_tag",
+                                route_tag=args.route,
+                                limit=batch_limit,
+                                vlm_client=client,
+                            )
+                            break
+                        except Exception as exc:
+                            if "locked" not in str(exc).lower() or attempt == 4:
+                                raise
+                            log(f"db locked, retry {attempt + 1}/5", log_path)
+                            time.sleep(10 * (attempt + 1))
                 finally:
                     conn.close()
 

@@ -1,6 +1,6 @@
 # インデックスパイプライン
 
-> **状態**: Phase 1 方針確定
+> **状態**: 初回 bulk 投入完了（2026-09-06）
 > **参照**: [blueprint.md](../../blueprint.md) §自動インデックス化フロー, [phase-1-prep.md](../decisions/phase-1-prep.md)
 
 ## 概要
@@ -110,6 +110,17 @@ n8n（トリガー・スケジュール）+ FastAPI/スクリプト（処理本�
 | 2 | pixiv | ~36,500 | 検証後に bulk。VLM はキュー漸進 |
 
 初回は n8n poll ではなく **手動バッチ1回**。以降は n8n 自動。
+
+### 初回 bulk 実行結果（2026-09-05〜06）
+
+| 順 | アーカイブ | ingest | embed | VLM |
+|---|---|---|---|---|
+| 1 | under.iphone | ✅ 3,926 | ✅ 3,924 | ✅ 3,901 caption（`run_vlm_overnight` ~15h） |
+| 2 | pixiv | ✅ 36,394 | ✅ 36,381 | ⏭ Phase 2（~36k キュー pending） |
+
+- **embed**: `make batch-archive` → `embed_pending.py --route route/pixiv`（2回目再開含む ~10h）
+- **skip 15 枚**: pixiv webm 13 + under.iphone 破損 2
+- **並行注意**: embed と VLM 同時実行で SQLite `database is locked` が発生した実績あり
 
 ## 関連ドキュメント
 

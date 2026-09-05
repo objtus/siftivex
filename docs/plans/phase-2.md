@@ -9,7 +9,8 @@
 
 ## 前提条件
 
-- [ ] Phase 1 完了
+- [x] Phase 1 初回 bulk 完了（embed + under.iphone VLM — 2026-09-06）
+- [ ] Phase 1 残タスク（n8n 本番デプロイ）
 - [ ] [query-language.md](../specs/query-language.md) 確定
 - [ ] [api.md](../specs/api.md) 検索・一覧エンドポイント確定
 - [ ] [ui.md](../specs/ui.md) ListScreen / DetailScreen 確定
@@ -43,6 +44,7 @@
 | 2.5 | ImageGrid + 仮想スクロール | pending | |
 | 2.6 | DetailScreen + 前後移動 | pending | |
 | 2.7 | 実利用検証 + フィードバック記録 | pending | |
+| 2.8 | pixiv VLM 漸進投入 | pending | ~36k キュー。`run_vlm_overnight` 500枚/日 等。embed 完了済 |
 
 ## 完了条件
 
