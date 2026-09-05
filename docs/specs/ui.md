@@ -1,12 +1,15 @@
 # UI 仕様
 
-> **状態**: スケルトン
+> **状態**: PC レイアウト再設計中（2026-09-06）
+> **思想**: [ui-philosophy.md](../decisions/ui-philosophy.md) — **資料探し・リスト中心**（必読）
 > **参照**: [blueprint.md](../../blueprint.md) §画面, §UIパーツ, §デバイス・レスポンシブ設計
 
 ## 概要
 
 画面構成、コンポーネント、状態管理、レスポンシブ分岐の仕様。
 blueprint の UI パーツ一覧を実装レベルに落とす。
+
+**PC（Phase 2）**: 資料探し優先。イメージリストと詳細ナビは別レイヤ（[ui-philosophy.md](../decisions/ui-philosophy.md) §二層ナビ）。レイアウト案 A/B/C は未決（OQ-UI-01）。
 
 ## 画面
 

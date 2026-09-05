@@ -7,7 +7,8 @@
 
 | ID | タイトル | 日付 | 状態 |
 |---|---|---|---|
-| — | （まだなし） | — | — |
+| — | [ui-philosophy.md](ui-philosophy.md) — UI 設計思想（資料探し・二層ナビ） | 2026-09-06 | proposed |
+| — | [vlm-on-demand.md](vlm-on-demand.md) — VLM オンデマンド | — | accepted |
 
 ## テンプレート
 
