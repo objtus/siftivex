@@ -1,4 +1,4 @@
-.PHONY: help install install-embed install-ocr install-api pipeline list-tasks init-db select-sample import-manifest review build-vocabulary task-0.1 task-0.2 task-0.2b task-0.7 migrate-db ingest process-jobs embed-pending batch-archive vlm-overnight api-dev
+.PHONY: help install install-embed install-ocr install-api pipeline list-tasks init-db select-sample import-manifest review build-vocabulary task-0.1 task-0.2 task-0.2b task-0.7 migrate-db ingest process-jobs embed-pending batch-archive vlm-overnight api-dev n8n-status n8n-ingest n8n-embed n8n-vlm
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -21,6 +21,10 @@ help:
 	@echo "  make import-manifest Task 0.2b: import manifest to DB"
 	@echo "  make review         Task 0.7: generate tag review HTML"
 	@echo "  make build-vocabulary  Build tag_vocabulary.yaml from archive filenames"
+	@echo "  make n8n-status     JSON index status (scheduled tasks)"
+	@echo "  make n8n-ingest     Incremental ingest (N8N_LIMIT=500)"
+	@echo "  make n8n-embed      Embed pending (N8N_EMBED_LIMIT=200)"
+	@echo "  make n8n-vlm        VLM queue (N8N_VLM_ROUTE=, N8N_VLM_LIMIT=5)"
 
 $(VENV)/bin/activate:
 	$(PYTHON) -m venv $(VENV)
@@ -85,6 +89,22 @@ vlm-overnight:
 
 api-dev:
 	$(PY) -m siftivex.api.main --host 127.0.0.1 --port 8787
+
+N8N_LIMIT ?= 500
+n8n-status:
+	$(PY) scripts/n8n_task.py status
+
+n8n-ingest:
+	$(PY) scripts/n8n_task.py ingest --limit $(N8N_LIMIT)
+
+N8N_EMBED_LIMIT ?= 200
+n8n-embed:
+	$(PY) scripts/n8n_task.py embed --limit $(N8N_EMBED_LIMIT)
+
+N8N_VLM_LIMIT ?= 5
+N8N_VLM_ROUTE ?= route/under-iphone
+n8n-vlm:
+	$(PY) scripts/n8n_task.py vlm --limit $(N8N_VLM_LIMIT) --route $(N8N_VLM_ROUTE)
 
 import-manifest:
 	$(PY) scripts/import_manifest.py

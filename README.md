@@ -47,7 +47,7 @@
 | フェーズ | 内容 | 状態 |
 |---|---|---|
 | [Phase 0](docs/plans/phase-0.md) | 基盤検証（数百枚で最小パイプライン） | パイプライン整備済 |
-| [Phase 1](docs/plans/phase-1.md) | コアデータ層（DB・n8n・4万枚投入） | スケルトン |
+| [Phase 1](docs/plans/phase-1.md) | コアデータ層（DB・n8n・4万枚投入） | **完了** |
 | [Phase 2](docs/plans/phase-2.md) | 検索・閲覧の最小 UI | スケルトン |
 | [Phase 3](docs/plans/phase-3.md) | 編集機能（タグ/OCR/アルバム/一括操作） | スケルトン |
 | [Phase 4](docs/plans/phase-4.md) | 仕上げ・拡張 | スケルトン |

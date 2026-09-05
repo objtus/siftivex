@@ -9,8 +9,7 @@
 
 ## 前提条件
 
-- [x] Phase 1 初回 bulk 完了（embed + under.iphone VLM — 2026-09-06）
-- [ ] Phase 1 残タスク（n8n 本番デプロイ）
+- [x] Phase 1 完了（2026-09-06）
 - [ ] [query-language.md](../specs/query-language.md) 確定
 - [ ] [api.md](../specs/api.md) 検索・一覧エンドポイント確定
 - [ ] [ui.md](../specs/ui.md) ListScreen / DetailScreen 確定

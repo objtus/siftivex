@@ -1,0 +1,17 @@
+# Siftivex indexing — cron fallback when n8n Execute Command is unavailable.
+# Install: crontab -e  (adjust /home/objtus/siftivex)
+#
+# SHELL=/bin/bash
+# PATH=/usr/local/bin:/usr/bin:/bin
+
+# Incremental ingest (new/changed files only)
+*/20 * * * * cd /home/objtus/siftivex && .venv/bin/python scripts/n8n_task.py ingest --limit 500 >> data/batch/cron-ingest.log 2>&1
+
+# CLIP embed backlog
+15 * * * * cd /home/objtus/siftivex && .venv/bin/python scripts/n8n_task.py embed --limit 200 >> data/batch/cron-embed.log 2>&1
+
+# VLM retries (under.iphone); disable or change route for pixiv Phase 2
+*/5 * * * * cd /home/objtus/siftivex && .venv/bin/python scripts/n8n_task.py vlm --limit 5 --route route/under-iphone >> data/batch/cron-vlm.log 2>&1
+
+# Missing file detection
+0 4 * * * cd /home/objtus/siftivex && .venv/bin/python scripts/n8n_task.py mark-missing >> data/batch/cron-missing.log 2>&1

@@ -1,0 +1,36 @@
+{
+  "name": "Siftivex mark missing",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "days", "daysInterval": 1, "triggerAtHour": 4, "triggerAtMinute": 0 }]
+        }
+      },
+      "id": "a7b8c9d0-e1f2-3456-0123-567890123456",
+      "name": "Daily 04:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "command": "cd /home/objtus/siftivex && .venv/bin/python scripts/n8n_task.py mark-missing"
+      },
+      "id": "b8c9d0e1-f2a3-4567-1234-678901234567",
+      "name": "Mark missing files",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [280, 0]
+    }
+  ],
+  "connections": {
+    "Daily 04:00": {
+      "main": [[{ "node": "Mark missing files", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "meta": { "templateCredsSetupCompleted": true },
+  "tags": [{ "name": "siftivex" }]
+}

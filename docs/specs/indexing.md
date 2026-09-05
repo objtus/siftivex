@@ -13,16 +13,12 @@ n8n（トリガー・スケジュール）+ FastAPI/スクリプト（処理本�
 ```
 フォルダ監視(n8n トリガー, 15〜30分 poll)
   │
-  ├─ [即時処理 ingest]
-  │    ├─ content_hash 計算 (BLAKE3)
-  │    ├─ サムネイル生成 (libvips) — 256 / 1280 WebP、原寸より小さければ拡大しない
-  │    ├─ CLIP embedding → LanceDB
-  │    ├─ dedicated OCR → auto_ocr（プロファイルでエンジン選択）
-  │    └─ route タグ付与 (folder-rules)
+  ├─ [即時処理] scripts/n8n_task.py ingest
+  │    └─ 新規 / mtime 変更ファイルのみ（差分）
   │
-  └─ [キュー]
-       └─ index_jobs: vlm_tag (pending)
-            └─ n8n 定期実行 → VLM → auto_tags + ocr_text（dedicated 未設定時のみ auto_ocr に反映）
+  ├─ [定期] scripts/n8n_task.py embed
+  │
+  └─ [キュー] scripts/n8n_task.py vlm
 ```
 
 ## 処理詳細
