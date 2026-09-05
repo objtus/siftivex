@@ -70,7 +70,10 @@ PATH=/usr/local/bin:/usr/bin:/bin
 
 */20 * * * * cd /home/objtus/siftivex && .venv/bin/python scripts/n8n_task.py ingest --limit 500 >> data/batch/cron-ingest.log 2>&1
 15 * * * * cd /home/objtus/siftivex && .venv/bin/python scripts/n8n_task.py embed --limit 200 >> data/batch/cron-embed.log 2>&1
-*/5 * * * * cd /home/objtus/siftivex && .venv/bin/python scripts/n8n_task.py vlm --limit 5 --route route/under-iphone >> data/batch/cron-vlm.log 2>&1
+
+# VLM: オンデマンド運用（Phase 2 UI）。常時 cron は使わない → docs/decisions/vlm-on-demand.md
+# */5 * * * * cd /home/objtus/siftivex && .venv/bin/python scripts/n8n_task.py vlm --limit 5 --route route/under-iphone >> data/batch/cron-vlm.log 2>&1
+
 0 4 * * * cd /home/objtus/siftivex && .venv/bin/python scripts/n8n_task.py mark-missing >> data/batch/cron-missing.log 2>&1
 ```
 

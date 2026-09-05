@@ -1,6 +1,6 @@
 # Phase 2: 検索・閲覧の最小 UI
 
-> **状態**: スケルトン
+> **状態**: 着手（2026-09-06）— Sprint 1: 検索 API
 > **参照**: [blueprint.md](../../blueprint.md) §開発フロー
 
 ## 目的
@@ -37,13 +37,13 @@
 | # | タスク | 状態 | 備考 |
 |---|---|---|---|
 | 2.1 | React + Vite プロジェクト作成 | pending | |
-| 2.2 | 検索 API 実装 | pending | FTS5 + LanceDB |
-| 2.3 | 画像配信 API（サムネイル + プレビュー） | pending | |
+| 2.2 | 検索 API 実装 | in progress | `GET /api/images` — tag + 自然言語（MVP） |
+| 2.3 | 画像配信 API（サムネイル + プレビュー） | done | Phase 1 骨格済 |
 | 2.4 | FilterBar + QueryInput | pending | |
 | 2.5 | ImageGrid + 仮想スクロール | pending | |
 | 2.6 | DetailScreen + 前後移動 | pending | |
 | 2.7 | 実利用検証 + フィードバック記録 | pending | |
-| 2.8 | pixiv VLM 漸進投入 | pending | ~36k キュー。`run_vlm_overnight` 500枚/日 等。embed 完了済 |
+| 2.8 | VLM オンデマンド UI + API | pending | 件数上限・終了時刻・停止。→ [vlm-on-demand.md](../decisions/vlm-on-demand.md) |
 
 ## 完了条件
 

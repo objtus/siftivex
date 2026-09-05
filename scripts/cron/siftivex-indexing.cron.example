@@ -10,8 +10,8 @@
 # CLIP embed backlog
 15 * * * * cd /home/objtus/siftivex && .venv/bin/python scripts/n8n_task.py embed --limit 200 >> data/batch/cron-embed.log 2>&1
 
-# VLM retries (under.iphone); disable or change route for pixiv Phase 2
-*/5 * * * * cd /home/objtus/siftivex && .venv/bin/python scripts/n8n_task.py vlm --limit 5 --route route/under-iphone >> data/batch/cron-vlm.log 2>&1
+# VLM retries — disabled: on-demand via Web UI (Phase 2). See docs/decisions/vlm-on-demand.md
+# */5 * * * * cd /home/objtus/siftivex && .venv/bin/python scripts/n8n_task.py vlm --limit 5 --route route/under-iphone >> data/batch/cron-vlm.log 2>&1
 
 # Missing file detection
 0 4 * * * cd /home/objtus/siftivex && .venv/bin/python scripts/n8n_task.py mark-missing >> data/batch/cron-missing.log 2>&1

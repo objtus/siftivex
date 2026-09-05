@@ -31,8 +31,8 @@ Basic 認証（Tailscale 内限定 + アプリレベル）。
 
 | Method | Path | 説明 | 状態 |
 |---|---|---|---|
-| GET | `/api/images` | イメージリスト取得（クエリ・ソート・ページネーション） | TBD |
-| GET | `/api/images/{image_id}` | 画像詳細 | TBD |
+| GET | `/api/images` | イメージリスト（`q`, `route_tag`, `limit`, `offset`） | MVP 実装済 |
+| GET | `/api/images/{image_id}` | 画像詳細 | Phase 1 骨格済 |
 
 ### タグ
 
@@ -76,8 +76,16 @@ Basic 認証（Tailscale 内限定 + アプリレベル）。
 
 | Method | Path | 説明 | 状態 |
 |---|---|---|---|
-| POST | `/api/index/trigger` | 手動インデックス実行 | TBD |
-| GET | `/api/index/status` | インデックス進捗 | TBD |
+| GET | `/api/index/status` | インデックス進捗 | Phase 1 骨格済 |
+| POST | `/api/index/trigger` | 手動 ingest/embed（任意） | TBD |
+
+### VLM ジョブ（オンデマンド — [vlm-on-demand.md](../decisions/vlm-on-demand.md)）
+
+| Method | Path | 説明 | 状態 |
+|---|---|---|---|
+| POST | `/api/jobs/vlm/start` | VLM バッチ開始（`route_tag`, `max_images?`, `until?`） | TBD |
+| GET | `/api/jobs/vlm/status` | 進捗・running/ok/fail | TBD |
+| POST | `/api/jobs/vlm/stop` | graceful 停止（次バッチ前） | TBD |
 
 ### 逆引き検索
 

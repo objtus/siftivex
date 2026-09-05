@@ -6,10 +6,10 @@
 
 | 項目 | 状態 |
 |---|---|
-| フェーズ | 設計 + Phase 0 パイプライン（embedding まで） |
-| コード | Phase 0 進行中 |
-| 画像同期 | under.iphone 同期済（3,994枚） |
-| 最終更新 | 2026-09-04 |
+| フェーズ | **Phase 1 クローズ** → Phase 2 着手可 |
+| DB | 40,320 images / 40,305 embedded / LanceDB 40,505 |
+| 自動化 | cron（ingest / embed / vlm / missing） |
+| 最終更新 | 2026-09-06 |
 
 ## ドキュメントの読み方
 
@@ -37,7 +37,7 @@
 | [data-model.md](docs/specs/data-model.md) | テーブル定義・識別子・差分レイヤー | 草案 |
 | [query-language.md](docs/specs/query-language.md) | クエリ構文・FTS5/LanceDB 変換 | スケルトン |
 | [api.md](docs/specs/api.md) | REST API エンドポイント | スケルトン |
-| [indexing.md](docs/specs/indexing.md) | 取り込み→embedding→OCR→VLM パイプライン | スケルトン |
+| [indexing.md](docs/specs/indexing.md) | 取り込み→embedding→OCR→VLM パイプライン | Phase 1 確定 |
 | [tags.md](docs/specs/tags.md) | 名前空間リスト・VLM プロンプト | スケルトン |
 | [folder-rules.md](docs/specs/folder-rules.md) | 取り込みプロファイル・パーサー | スケルトン |
 | [ui.md](docs/specs/ui.md) | 画面・コンポーネント・状態遷移 | スケルトン |

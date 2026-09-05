@@ -1,16 +1,29 @@
 """FastAPI application skeleton."""
 
+from functools import lru_cache
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from siftivex.db import get_connection
-from siftivex.paths import DEFAULT_DB_PATH, DEFAULT_THUMBNAILS_DIR
+from siftivex.embeddings import Embedder, EmbeddingStore
+from siftivex.paths import DEFAULT_DB_PATH, DEFAULT_LANCE_PATH, DEFAULT_THUMBNAILS_DIR
+from siftivex.search import image_to_dict, search_images
 from siftivex.tags_db import effective_tags
 from siftivex.thumbnails import ThumbnailPaths, thumbnail_dir
 
-app = FastAPI(title="Siftivex", version="0.1.0")
+app = FastAPI(title="Siftivex", version="0.2.0")
+
+
+@lru_cache(maxsize=1)
+def _embedder() -> Embedder:
+    return Embedder()
+
+
+@lru_cache(maxsize=1)
+def _embedding_store() -> EmbeddingStore:
+    return EmbeddingStore(DEFAULT_LANCE_PATH)
 
 
 def _thumb_paths(image_id: str) -> ThumbnailPaths:
@@ -21,6 +34,40 @@ def _thumb_paths(image_id: str) -> ThumbnailPaths:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/images")
+def list_images(
+    q: str = Query("", description="tag:foo -tag:bar or natural language"),
+    route_tag: str | None = Query(None),
+    limit: int = Query(60, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> dict:
+    conn = get_connection(DEFAULT_DB_PATH)
+    try:
+        parsed = search_images(
+            conn,
+            q,
+            route_tag=route_tag,
+            limit=limit,
+            offset=offset,
+            store=_embedding_store(),
+            embedder=_embedder(),
+        )
+        return {
+            "total": parsed.total,
+            "limit": limit,
+            "offset": offset,
+            "query": {
+                "raw": q,
+                "include_tags": parsed.parsed.include_tags,
+                "exclude_tags": parsed.parsed.exclude_tags,
+                "text": parsed.parsed.text,
+            },
+            "items": [image_to_dict(conn, hit) for hit in parsed.items],
+        }
+    finally:
+        conn.close()
 
 
 @app.get("/api/images/{image_id}")

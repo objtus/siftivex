@@ -1,6 +1,6 @@
 # Phase 1: コアデータ層
 
-> **状態**: Phase 1 完了（2026-09-06）
+> **状態**: **クローズ**（2026-09-06 監査済み）
 > **参照**: [blueprint.md](../../blueprint.md) §開発フロー
 
 ## 目的
@@ -42,10 +42,10 @@ pixiv 同期完了: **36,560** + under.iphone **3,994** = **~40,554 枚**
 | 1.2 | LanceDB 本番セットアップ | done | bulk load 完了（~40,505 行）。HNSW チューニングは Phase 2 可 |
 | 1.3 | インデックスワーカー実装 | done | ingest + thumb + FTS5 + OCR ルーティング + embed + VLM キュー |
 | 1.4 | VLM キュー + バッチ処理 | done | `scripts/process_jobs.py`, `run_vlm_overnight.py` |
-| 1.5 | n8n ワークフロー構築 | done | `n8n/workflows/*.json`, `scripts/n8n_task.py`, [n8n-indexing.md](../setup/n8n-indexing.md) |
+| 1.5 | 定期自動化（n8n / cron） | done | **本番: cron**（2026-09-06）。`n8n/workflows/` は将来用 |
 | 1.6 | folder_rules.yaml 初期設定 | done | ローカル `config/folder_rules.yaml` + paths.yaml |
 | 1.7 | 4万枚初回投入（embedding/OCR） | done | 2026-09-06 完了（下表） |
-| 1.8 | VLM タグ付け漸進投入 | partial | under.iphone 完了（99%）。**pixiv は Phase 2 へ** |
+| 1.8 | VLM タグ付け漸進投入 | done* | under.iphone 99%。pixiv → Phase 2（意図的スコープ外） |
 | 1.9 | FastAPI プロジェクト骨格 | done | `/health`, 画像配信, `/api/index/status`。Compose 骨格あり |
 
 ## 初回 bulk 投入 実績（2026-09-05〜06）
@@ -60,12 +60,35 @@ pixiv 同期完了: **36,560** + under.iphone **3,994** = **~40,554 枚**
 
 **運用上の注意**: embed と VLM を同時実行すると SQLite ロック競合あり。別プロセスで回す。
 
+## クローズ監査（2026-09-06）
+
+| 完了条件 | 結果 |
+|---|---|
+| ~4万枚 ingest + embed + サムネ | ✅ 40,320 active / 40,305 embedded / ~40k thumbs |
+| LanceDB | ✅ 40,505 行 |
+| FTS5 `image_search` | ✅ 40,021 行 |
+| pixiv `image_metadata` | ✅ 36,378 行 |
+| under.iphone VLM | ✅ 3,902 / 3,926 caption（99.4%） |
+| 定期自動化 | ✅ cron 3 本（ingest 20分 / embed 毎時 / missing 日次）。VLM は [vlm-on-demand.md](../decisions/vlm-on-demand.md) |
+| FastAPI 骨格 | ✅ 実装済（常駐は任意、`make api-dev`） |
+| pytest | ✅ 37 passed |
+
+### 既知の残件（Phase 1 ブロッカーではない）
+
+| 項目 | 数 | 対応 |
+|---|---|---|
+| embed skip | 15 | webm 9 + 読取不可 jpeg/png 6 — CLIP 非対応 |
+| under.iphone VLM 未了 | ~24 | Phase 2 UI 手動 or CLI |
+| pixiv VLM | ~36k pending | Phase 2 オンデマンド（[vlm-on-demand.md](../decisions/vlm-on-demand.md)） |
+| n8n UI | 未デプロイ | cron で代替済。JSON は `n8n/workflows/` |
+| API 常駐 | 停止中 | 必要時 `make api-dev` または Compose |
+
 ## 完了条件
 
 - [x] 4万枚の embedding + サムネイルが DB/LanceDB に格納（未読 15 枚は skip）
-- [x] under.iphone VLM タグ付け完了（pixiv VLM は Phase 2 で漸進 — 100% 完了は Phase 1 必須条件から除外）
-- [x] 新規ファイル追加が n8n / cron 経由で自動インデックスされる（差分 ingest + embed スケジュール）
-- [x] FastAPI が起動し `/health` が応答する（Compose 本番常駐は任意）
+- [x] under.iphone VLM タグ付け（pixiv VLM は Phase 2 — スコープ外）
+- [x] 新規ファイル追加が cron 経由で自動インデックス（`scripts/n8n_task.py`）
+- [x] FastAPI 骨格 + `/health` 動作確認済み
 
 ## Phase 2 へ
 

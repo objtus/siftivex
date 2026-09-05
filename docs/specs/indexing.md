@@ -18,7 +18,8 @@ n8n（トリガー・スケジュール）+ FastAPI/スクリプト（処理本�
   │
   ├─ [定期] scripts/n8n_task.py embed
   │
-  └─ [キュー] scripts/n8n_task.py vlm
+  └─ [VLM] index_jobs に積むのみ → Phase 2 UI/API で手動実行
+       （→ [vlm-on-demand.md](../decisions/vlm-on-demand.md)）
 ```
 
 ## 処理詳細
@@ -64,13 +65,15 @@ n8n（トリガー・スケジュール）+ FastAPI/スクリプト（処理本�
 
 ### VLM タグ付け
 
-- llama.cpp port 8081（Phase 0 構成継続）
+- llama.cpp / OpenAI 互換 API（`config/vlm.yaml`）
 - プロンプト → [tags.md](tags.md)
 - 失敗時 `要再タグ`、空結果時 `未分類`
+- **運用**: ingest 時にキューへ積む。**実行は Web UI 手動**（→ [vlm-on-demand.md](../decisions/vlm-on-demand.md)）。cron 常時 VLM は使わない。
+- llama-server の起動・モデル選択は siftivex 外（ユーザー管理）
 
 ## キュー管理（A）
 
-`index_jobs` テーブル + n8n 定期実行（例: 5分）。
+`index_jobs` テーブル。VLM 消化は **オンデマンド**（Phase 2 API / `run_vlm_overnight.py`）。
 
 | status | 意味 |
 |---|---|
