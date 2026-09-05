@@ -72,6 +72,41 @@ def _work_title(sorted_pages: list[tuple[sqlite3.Row, int | None, dict]]) -> str
     return None
 
 
+def _title_from_extra(extra: dict) -> str | None:
+    title = extra.get("title")
+    if isinstance(title, str) and title.strip():
+        return title.strip()
+    return None
+
+
+def image_metadata_for_image(
+    conn: sqlite3.Connection,
+    image_id: str,
+) -> dict | None:
+    """Return structured metadata for an image when present (any route)."""
+    meta = conn.execute(
+        """
+        SELECT m.work_id, m.artist, m.posted_at, m.source_url, m.extra_json
+        FROM image_metadata m
+        JOIN images i ON i.image_id = m.image_id
+        WHERE m.image_id = ? AND i.status = 'active'
+        """,
+        (image_id,),
+    ).fetchone()
+    if meta is None:
+        return None
+
+    extra = parse_extra_json(meta["extra_json"])
+    return {
+        "work_id": meta["work_id"],
+        "title": _title_from_extra(extra),
+        "artist": meta["artist"],
+        "posted_at": meta["posted_at"],
+        "source_url": meta["source_url"],
+        "page": page_from_extra(extra),
+    }
+
+
 def page_item_dict(
     row: sqlite3.Row,
     page: int | None,

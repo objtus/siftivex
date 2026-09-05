@@ -340,83 +340,105 @@ function pageThumbUrl(p) {
   return null;
 }
 
-async function fetchWorkContext(imageId) {
+async function fetchWorkContext(imageId, item = null) {
   if (!state.useApi) return mockWorkContext(imageId);
-  try {
-    const res = await fetch(`/api/images/${encodeURIComponent(imageId)}`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    const work = data.work;
-    if (work) {
-      const pageCount = work.page_count ?? 1;
-      return {
-        ...work,
-        title: work.title ?? data.work_title,
-        artist: work.artist ?? data.work_artist,
-        posted_at: data.posted_at ?? work.posted_at,
-        source_url: work.source_url ?? data.source_url,
-        multi_page: pageCount > 1,
-      };
+
+  let data = item;
+  if (!data?.metadata && !data?.work) {
+    try {
+      const res = await fetch(`/api/images/${encodeURIComponent(imageId)}`);
+      if (!res.ok) return null;
+      data = await res.json();
+    } catch {
+      return null;
     }
-    if (data.route_tag === "route/pixiv" && (data.work_id || data.work_title)) {
-      return {
-        work_id: data.work_id,
-        title: data.work_title,
-        artist: data.work_artist,
-        posted_at: data.posted_at,
-        source_url: data.source_url,
-        page_count: 1,
-        multi_page: false,
-      };
-    }
-    return null;
-  } catch {
-    return null;
   }
+
+  const meta = data.metadata ?? null;
+  const work = data.work ?? null;
+
+  if (work) {
+    const pageCount = work.page_count ?? 1;
+    return {
+      ...work,
+      title: work.title ?? meta?.title ?? null,
+      artist: work.artist ?? meta?.artist ?? null,
+      posted_at: work.posted_at ?? meta?.posted_at ?? null,
+      source_url: work.source_url ?? meta?.source_url ?? null,
+      work_id: work.work_id ?? meta?.work_id ?? null,
+      multi_page: pageCount > 1,
+    };
+  }
+
+  if (meta) {
+    return {
+      ...meta,
+      page_count: 1,
+      multi_page: false,
+    };
+  }
+
+  return null;
 }
 
-function isPixivItem(item) {
-  return item.route_tag === "route/pixiv";
+/** Merge image + work context into display fields (route-agnostic). */
+function readDisplayMeta(item, workCtx) {
+  const meta = item.metadata ?? {};
+  return {
+    title: workCtx?.title ?? meta.title ?? item.work_title ?? item.title ?? null,
+    artist: workCtx?.artist ?? meta.artist ?? item.work_artist ?? item.artist ?? null,
+    posted_at: workCtx?.posted_at ?? meta.posted_at ?? item.posted_at ?? null,
+    source_url: workCtx?.source_url ?? meta.source_url ?? item.source_url ?? null,
+    work_id: workCtx?.work_id ?? meta.work_id ?? item.work_id ?? null,
+  };
+}
+
+function contextTitle(item, displayMeta) {
+  return displayMeta.title || item.file_name;
+}
+
+function sourceLinkLabel(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "link";
+  }
 }
 
 function routeLabel(route) {
-  if (route === "route/pixiv") return "pixiv";
-  if (route === "route/under-iphone") return "under.iphone";
-  return route ?? "—";
+  if (!route) return "—";
+  return route.startsWith("route/") ? route.slice(6) : route;
 }
 
-function renderSubline(item, workCtx) {
+function renderSubline(item, displayMeta) {
   els.detailSubline.innerHTML = "";
-  if (isPixivItem(item)) {
-    const artist = workCtx?.artist || item.work_artist;
-    const posted = workCtx?.posted_at || item.posted_at;
-    const url = workCtx?.source_url || item.source_url;
-    if (artist) {
-      const span = document.createElement("span");
-      span.textContent = artist;
-      els.detailSubline.appendChild(span);
-    }
-    if (posted) {
-      const span = document.createElement("span");
-      span.className = "dim";
-      span.textContent = posted;
-      els.detailSubline.appendChild(span);
-    }
-    if (url) {
+  const entries = [];
+  if (displayMeta.artist) entries.push({ kind: "text", text: displayMeta.artist });
+  if (displayMeta.posted_at) entries.push({ kind: "text", text: displayMeta.posted_at, dim: true });
+  if (displayMeta.source_url) {
+    entries.push({
+      kind: "link",
+      href: displayMeta.source_url,
+      text: sourceLinkLabel(displayMeta.source_url),
+    });
+  }
+  if (entries.length === 0 && item.width && item.height) {
+    entries.push({ kind: "text", text: `${item.width}×${item.height}`, dim: true });
+  }
+  for (const entry of entries) {
+    if (entry.kind === "link") {
       const a = document.createElement("a");
-      a.href = url;
+      a.href = entry.href;
       a.target = "_blank";
       a.rel = "noopener";
-      a.textContent = "pixiv";
+      a.textContent = entry.text;
       els.detailSubline.appendChild(a);
+    } else {
+      const span = document.createElement("span");
+      if (entry.dim) span.className = "dim";
+      span.textContent = entry.text;
+      els.detailSubline.appendChild(span);
     }
-    return;
-  }
-  if (item.width && item.height) {
-    const span = document.createElement("span");
-    span.className = "dim";
-    span.textContent = `${item.width}×${item.height}`;
-    els.detailSubline.appendChild(span);
   }
 }
 
@@ -495,16 +517,12 @@ function renderPageStrip(activeId, pages) {
 }
 
 async function renderDetailContext(item) {
-  const workCtx = await fetchWorkContext(item.image_id);
+  const workCtx = await fetchWorkContext(item.image_id, item);
+  const displayMeta = readDisplayMeta(item, workCtx);
   state.workContext = workCtx?.multi_page ? workCtx : null;
 
-  const pixiv = isPixivItem(item);
-  els.detailTitle.textContent =
-    pixiv && (item.work_title || workCtx?.title)
-      ? item.work_title || workCtx.title
-      : item.file_name;
-
-  renderSubline(item, workCtx);
+  els.detailTitle.textContent = contextTitle(item, displayMeta);
+  renderSubline(item, displayMeta);
 
   const multiPage = !!workCtx?.multi_page;
   els.detailPageSlot.classList.toggle("has-pages", multiPage);

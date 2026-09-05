@@ -12,7 +12,7 @@ from siftivex.paths import DEFAULT_DB_PATH, DEFAULT_LANCE_PATH, DEFAULT_THUMBNAI
 from siftivex.search import image_to_dict, search_images
 from siftivex.tags_db import effective_tags
 from siftivex.thumbnails import ThumbnailPaths, thumbnail_dir
-from siftivex.works import get_work_pages, validate_work_id, work_context_for_image
+from siftivex.works import get_work_pages, image_metadata_for_image, validate_work_id, work_context_for_image
 
 app = FastAPI(title="Siftivex", version="0.2.0")
 
@@ -94,6 +94,7 @@ def get_image(image_id: str) -> dict:
             (image_id,),
         ).fetchone()
         work = work_context_for_image(conn, image_id)
+        metadata = image_metadata_for_image(conn, image_id)
     finally:
         conn.close()
 
@@ -110,6 +111,7 @@ def get_image(image_id: str) -> dict:
         "ocr_text": ocr["text"] if ocr else "",
         "has_thumbnail": thumbs.thumb.is_file(),
         "has_preview": thumbs.preview.is_file(),
+        "metadata": metadata,
         "work": work,
     }
 

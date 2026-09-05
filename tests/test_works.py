@@ -11,7 +11,7 @@ from PIL import Image
 
 from siftivex.db import init_db, migrate_phase1
 from siftivex.ingest import ingest_file, write_pixiv_metadata
-from siftivex.works import get_work_pages, validate_work_id, work_context_for_image
+from siftivex.works import get_work_pages, image_metadata_for_image, validate_work_id, work_context_for_image
 
 
 @pytest.fixture
@@ -92,6 +92,26 @@ def test_work_context_navigation(db_conn: sqlite3.Connection, tmp_path: Path):
 def test_single_page_has_no_work_context(db_conn: sqlite3.Connection, tmp_path: Path):
     image_id = insert_pixiv_page(db_conn, tmp_path, work_id="9003", page=0)
     assert work_context_for_image(db_conn, image_id) is None
+
+
+def test_single_page_has_metadata(db_conn: sqlite3.Connection, tmp_path: Path):
+    image_id = insert_pixiv_page(db_conn, tmp_path, work_id="9003", page=0, title="単ページ")
+    meta = image_metadata_for_image(db_conn, image_id)
+    assert meta is not None
+    assert meta["work_id"] == "9003"
+    assert meta["title"] == "単ページ"
+    assert meta["artist"] == "test_artist"
+    assert meta["posted_at"] == "2024-01-01"
+    assert meta["page"] == 0
+
+
+def test_image_without_metadata_row(db_conn: sqlite3.Connection, tmp_path: Path):
+    path = tmp_path / "plain.jpg"
+    write_png(path, (1, 2, 3))
+    from siftivex.ingest import ingest_file
+
+    result = ingest_file(path, db_conn, route_tag="route/under-iphone", skip_ocr=True)
+    assert image_metadata_for_image(db_conn, result.image_id) is None
 
 
 def test_work_pages_pagination(db_conn: sqlite3.Connection, tmp_path: Path):
