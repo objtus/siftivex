@@ -36,10 +36,20 @@ function pickTags(seed, n = 6) {
 
 /** pixiv 複数ページ作品のモック定義 */
 const MOCK_WORKS = [
-  { work_id: "100001", title: "2024年まとめ（12p）", artist: "mock_artist", pages: 12, startIndex: 10 },
-  { work_id: "100002", title: "短編セット", artist: "mock_artist2", pages: 3, startIndex: 30 },
-  { work_id: "100003", title: "167p 相当の長編（UIテスト用20p）", artist: "mock_artist3", pages: 20, startIndex: 50 },
+  { work_id: "100001", title: "2024年まとめ（12p）", artist: "mock_artist", pages: 12, startIndex: 10, posted_at: "2024-01-08" },
+  { work_id: "100002", title: "短編セット", artist: "mock_artist2", pages: 3, startIndex: 30, posted_at: "2024-05-22" },
+  { work_id: "100003", title: "167p 相当の長編（UIテスト用20p）", artist: "mock_artist3", pages: 20, startIndex: 50, posted_at: "2023-11-03" },
 ];
+
+/** pixiv 単ページ作品（ページナビなし・メタデータあり） */
+const MOCK_SINGLE_PIXIV = [
+  { work_id: "200001", title: "単ページイラスト", artist: "solo_artist", index: 5, posted_at: "2024-03-15" },
+  { work_id: "200002", title: "ラクガキ", artist: "solo_artist2", index: 6, posted_at: "2024-06-20" },
+];
+
+function singlePixivForIndex(i) {
+  return MOCK_SINGLE_PIXIV.find((w) => w.index === i) ?? null;
+}
 
 function workForIndex(i) {
   for (const w of MOCK_WORKS) {
@@ -54,12 +64,18 @@ export const IMAGES = Array.from({ length: 120 }, (_, i) => {
   const n = String(i + 1).padStart(3, "0");
   const id = `img_mock_${n}`;
   const work = workForIndex(i);
-  const route = work || i % 5 === 0 ? "route/pixiv" : "route/under-iphone";
+  const singlePixiv = singlePixivForIndex(i);
+  const route = work || singlePixiv || i % 5 === 0 ? "route/pixiv" : "route/under-iphone";
   const w = [800, 1200, 900, 1600, 750][i % 5];
   const h = [1200, 800, 1350, 900, 1000][i % 5];
+  const pixivMeta = work || singlePixiv;
   return {
     image_id: id,
-    file_name: work ? `${work.work_id}_p${work.page}.jpg` : `sample_${n}_テスト画像.jpg`,
+    file_name: work
+      ? `${work.work_id}_p${work.page}.jpg`
+      : singlePixiv
+        ? `${singlePixiv.work_id}.jpg`
+        : `sample_${n}_テスト画像.jpg`,
     route_tag: route,
     width: w,
     height: h,
@@ -70,11 +86,12 @@ export const IMAGES = Array.from({ length: 120 }, (_, i) => {
       ? "室内で撮影された写真。自然光が窓から差し込んでいる。"
       : "",
     thumbStyle: makeThumbStyle(id, w, h),
-    work_id: work?.work_id ?? null,
-    work_title: work?.title ?? null,
-    work_artist: work?.artist ?? null,
+    work_id: pixivMeta?.work_id ?? null,
+    work_title: pixivMeta?.title ?? null,
+    work_artist: pixivMeta?.artist ?? null,
+    posted_at: pixivMeta?.posted_at ?? (route === "route/pixiv" ? `2024-${String((i % 12) + 1).padStart(2, "0")}-10` : null),
     page: work?.page ?? null,
-    source_url: work ? `https://www.pixiv.net/artworks/${work.work_id}` : null,
+    source_url: pixivMeta ? `https://www.pixiv.net/artworks/${pixivMeta.work_id}` : null,
   };
 });
 
@@ -88,18 +105,21 @@ export function mockWorkContext(imageId) {
   const item = IMAGES.find((img) => img.image_id === imageId);
   if (!item?.work_id) return null;
   const pages = getMockWorkPages(item.work_id);
-  if (pages.length <= 1) return null;
   const pageIndex = pages.findIndex((p) => p.image_id === imageId);
+  const pageCount = pages.length;
+  const multiPage = pageCount > 1;
   return {
     work_id: item.work_id,
     title: item.work_title,
     artist: item.work_artist,
+    posted_at: item.posted_at,
     source_url: item.source_url,
     page: item.page,
-    page_index: pageIndex,
-    page_count: pages.length,
-    prev_image_id: pageIndex > 0 ? pages[pageIndex - 1].image_id : null,
-    next_image_id: pageIndex < pages.length - 1 ? pages[pageIndex + 1].image_id : null,
+    page_index: pageIndex >= 0 ? pageIndex : 0,
+    page_count: pageCount,
+    multi_page: multiPage,
+    prev_image_id: multiPage && pageIndex > 0 ? pages[pageIndex - 1].image_id : null,
+    next_image_id: multiPage && pageIndex < pageCount - 1 ? pages[pageIndex + 1].image_id : null,
   };
 }
 

@@ -1,28 +1,34 @@
-import { ALBUMS, IMAGES, ROUTES, TAGS, getMockWorkPages, mockWorkContext } from "./data.js";
+import { IMAGES, TAGS, getMockWorkPages, mockWorkContext } from "./data.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
 const state = {
+  layoutPreset: "b",
+  appMode: "explore",
   query: "",
   route: "all",
   viewMode: "grid",
   sort: "file_name",
-  tagStates: Object.fromEntries(TAGS.map((t) => [t, 0])), // 0 neutral 1 include 2 exclude
+  tagStates: Object.fromEntries(TAGS.map((t) => [t, 0])),
   selected: new Set(),
-  selectMode: false,
   activeId: null,
-  detailIndex: 0,
+  detailIndex: -1,
   similarTab: "color",
-  layout: "wide-right", // wide-right | wide-bottom | narrow
   useApi: false,
   apiImages: null,
   workContext: null,
   workPages: [],
-  detailOverride: null,
+  originStack: [{ label: "開始", query: "", route: "all", scrollTop: 0 }],
+  originIndex: 0,
+  savedScrollTop: 0,
 };
 
 const els = {};
+
+function listScrollEl() {
+  return state.viewMode === "grid" ? els.grid : els.tableWrap;
+}
 
 function tagStateLabel(s) {
   return s === 1 ? "+" : s === 2 ? "−" : "·";
@@ -35,6 +41,7 @@ function tagStateClass(s) {
 function cycleTag(tag) {
   state.tagStates[tag] = (state.tagStates[tag] + 1) % 3;
   syncQueryFromTags();
+  commitQueryToOrigin();
   render();
 }
 
@@ -52,28 +59,49 @@ function parseQueryTags(q) {
   for (const tag of TAGS) state.tagStates[tag] = 0;
   const re = /(-?)tag:([^\s]+)/g;
   let m;
-  let text = q;
   while ((m = re.exec(q)) !== null) {
     const excl = m[1] === "-";
     const tag = m[2];
     if (TAGS.includes(tag)) state.tagStates[tag] = excl ? 2 : 1;
-    text = text.replace(m[0], "");
   }
   state.query = q;
-  return text.trim();
+}
+
+function queryTextOnly(q) {
+  return q
+    .replace(/(?:^-?tag:[^\s]+\s*)+/g, "")
+    .replace(/(?:\s+-?tag:[^\s]+)+/g, "")
+    .replace(/similar_to:\S+/g, "")
+    .trim();
+}
+
+function ocrExcerpt(item) {
+  const t = (item.ocr_text || "").replace(/\s+/g, " ").trim();
+  if (!t) return "—";
+  return t.length > 40 ? `${t.slice(0, 40)}…` : t;
 }
 
 function filteredImages() {
   const src = state.useApi && state.apiImages ? state.apiImages : IMAGES;
   let list = [...src];
-  if (state.route !== "all") {
-    list = list.filter((i) => i.route_tag === state.route);
+  if (state.route !== "all") list = list.filter((i) => i.route_tag === state.route);
+
+  const sim = state.query.match(/similar_to:(\S+)/);
+  if (sim && !state.useApi) {
+    const base = IMAGES.find((i) => i.image_id === sim[1]) || list[0];
+    list = list.filter((i) => i.image_id !== sim[1]).slice(0, 40);
+    if (base) list.unshift(base);
+    list.forEach((i, idx) => {
+      i.score = +(0.4 - idx * 0.004).toFixed(3);
+    });
+    return list;
   }
+
   for (const [tag, s] of Object.entries(state.tagStates)) {
     if (s === 1) list = list.filter((i) => i.tags.includes(tag));
     if (s === 2) list = list.filter((i) => !i.tags.includes(tag));
   }
-  const text = parseQueryTags(state.query);
+  const text = queryTextOnly(state.query);
   if (text && !state.useApi) {
     const lower = text.toLowerCase();
     list = list.filter(
@@ -94,19 +122,92 @@ function filteredImages() {
   return list;
 }
 
-function activeChips() {
-  const chips = [];
-  for (const [tag, s] of Object.entries(state.tagStates)) {
-    if (s === 0) continue;
-    chips.push({ type: s === 1 ? "include" : "exclude", label: tag, tag });
+function originLabel(query) {
+  if (!query) return "開始";
+  if (query.startsWith("similar_to:")) return `類似 ${query.slice(11, 22)}…`;
+  return query.length > 18 ? `${query.slice(0, 18)}…` : query;
+}
+
+function commitQueryToOrigin() {
+  const cur = state.originStack[state.originIndex];
+  if (cur && cur.query === state.query && cur.route === state.route) return;
+  state.originStack = state.originStack.slice(0, state.originIndex + 1);
+  state.originStack.push({
+    label: originLabel(state.query),
+    query: state.query,
+    route: state.route,
+    scrollTop: listScrollEl()?.scrollTop ?? 0,
+  });
+  if (state.originStack.length > 5) state.originStack.shift();
+  else state.originIndex += 1;
+}
+
+function renderBreadcrumb() {
+  els.breadcrumb.innerHTML = "";
+  state.originStack.forEach((entry, idx) => {
+    if (idx > 0) {
+      const sep = document.createElement("span");
+      sep.className = "origin-sep";
+      sep.textContent = "›";
+      els.breadcrumb.appendChild(sep);
+    }
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = entry.label;
+    btn.title = entry.query || "（空）";
+    btn.classList.toggle("active", idx === state.originIndex);
+    btn.addEventListener("click", () => jumpToOrigin(idx));
+    els.breadcrumb.appendChild(btn);
+  });
+}
+
+function jumpToOrigin(idx) {
+  const entry = state.originStack[idx];
+  if (!entry) return;
+  state.originIndex = idx;
+  state.query = entry.query;
+  state.route = entry.route;
+  els.queryInput.value = state.query;
+  parseQueryTags(state.query);
+  $$(".route-tabs button").forEach((b) => {
+    b.classList.toggle("active", b.dataset.route === state.route);
+  });
+  void (async () => {
+    if (state.useApi) await tryLoadApi();
+    render();
+    requestAnimationFrame(() => {
+      listScrollEl().scrollTop = entry.scrollTop;
+    });
+  })();
+}
+
+function pushSimilarReflux(imageId) {
+  const scrollTop = listScrollEl()?.scrollTop ?? 0;
+  state.originStack = state.originStack.slice(0, state.originIndex + 1);
+  state.originStack.push({
+    label: originLabel(state.query),
+    query: state.query,
+    route: state.route,
+    scrollTop,
+  });
+  state.query = `similar_to:${imageId}`;
+  state.originIndex = state.originStack.length;
+  state.originStack.push({
+    label: originLabel(state.query),
+    query: state.query,
+    route: state.route,
+    scrollTop: 0,
+  });
+  if (state.originStack.length > 6) {
+    state.originStack = state.originStack.slice(-5);
+    state.originIndex = state.originStack.length - 1;
   }
-  return chips;
+  els.queryInput.value = state.query;
+  render();
 }
 
 function renderThumb(el, item, mode = "grid") {
-  if (mode === "table") {
-    el.className = "table-thumb-cell";
-  }
+  if (mode === "table") el.className = "table-thumb-cell";
   if (item.thumb_url) {
     const img = document.createElement("img");
     img.className = mode === "table" ? "table-thumb" : "thumb";
@@ -119,8 +220,7 @@ function renderThumb(el, item, mode = "grid") {
   const ph = document.createElement("div");
   if (mode === "table") {
     ph.className = "table-thumb-ph";
-    const style = item.thumbStyle || {};
-    ph.style.background = style.background || "#2a3140";
+    ph.style.background = item.thumbStyle?.background || "#2a3140";
   } else {
     ph.className = "thumb-placeholder";
     Object.assign(ph.style, item.thumbStyle || {});
@@ -130,53 +230,46 @@ function renderThumb(el, item, mode = "grid") {
 }
 
 function renderGrid(list) {
-  const grid = els.grid;
-  grid.innerHTML = "";
-  grid.classList.toggle("select-mode", state.selectMode);
+  els.grid.innerHTML = "";
   for (const item of list) {
     const card = document.createElement("article");
     card.className = "image-card";
     if (state.selected.has(item.image_id)) card.classList.add("selected");
     if (item.image_id === state.activeId) card.classList.add("active");
     card.dataset.id = item.image_id;
-
     const check = document.createElement("span");
     check.className = "check";
     check.textContent = "✓";
     card.appendChild(check);
-
     const thumbWrap = document.createElement("div");
     renderThumb(thumbWrap, item);
     card.appendChild(thumbWrap);
-
     if (item.score != null) {
       const sc = document.createElement("span");
       sc.className = "score";
       sc.textContent = item.score.toFixed(3);
       card.appendChild(sc);
     }
-
     card.addEventListener("click", (e) => onCardClick(item, e));
-    grid.appendChild(card);
+    els.grid.appendChild(card);
   }
 }
 
 function renderTable(list) {
-  const tbody = els.tableBody;
-  tbody.innerHTML = "";
+  els.tableBody.innerHTML = "";
   for (const item of list) {
     const tr = document.createElement("tr");
     if (item.image_id === state.activeId) tr.classList.add("active");
     tr.innerHTML = `
       <td class="col-thumb"><div class="table-thumb-cell"></div></td>
       <td class="col-filename">${item.file_name}</td>
-      <td class="col-tags">${item.tags.slice(0, 6).join(", ")}</td>
-      <td class="col-route">${item.route_tag?.split("/").pop() ?? ""}</td>
+      <td class="col-tags">${item.tags.slice(0, 5).join(", ")}</td>
+      <td class="col-ocr">${ocrExcerpt(item)}</td>
       <td class="col-score">${item.score?.toFixed(3) ?? "—"}</td>
     `;
     renderThumb(tr.querySelector(".table-thumb-cell"), item, "table");
     tr.addEventListener("click", () => openDetail(item.image_id, list));
-    tbody.appendChild(tr);
+    els.tableBody.appendChild(tr);
   }
 }
 
@@ -200,30 +293,51 @@ function renderTagList() {
 }
 
 function renderChips() {
-  els.chipRow.innerHTML = '<span class="chip-row-label">条件</span>';
-  for (const c of activeChips()) {
+  els.chipRow.innerHTML = "";
+  for (const [tag, s] of Object.entries(state.tagStates)) {
+    if (s === 0) continue;
     const chip = document.createElement("span");
-    chip.className = `chip ${c.type}`;
-    chip.innerHTML = `${c.type === "exclude" ? "−" : ""}${c.label} <button type="button" class="x" aria-label="解除">×</button>`;
+    chip.className = `chip ${s === 1 ? "include" : "exclude"}`;
+    chip.innerHTML = `${s === 2 ? "−" : ""}${tag} <button type="button" class="x">×</button>`;
     chip.querySelector(".x").addEventListener("click", () => {
-      state.tagStates[c.tag] = 0;
+      state.tagStates[tag] = 0;
       syncQueryFromTags();
+      commitQueryToOrigin();
       render();
     });
     els.chipRow.appendChild(chip);
   }
-  els.queryNote.classList.toggle("visible", /\([^)]+\)/.test(state.query));
+  els.queryNote.classList.toggle("visible", /similar_to:/.test(state.query));
+}
+
+function enterViewMode() {
+  if (state.layoutPreset !== "b") return;
+  state.savedScrollTop = listScrollEl()?.scrollTop ?? 0;
+  state.appMode = "view";
+  applyShellClasses();
+}
+
+function exitViewMode() {
+  if (state.layoutPreset !== "b") return;
+  state.appMode = "explore";
+  applyShellClasses();
+  requestAnimationFrame(() => {
+    listScrollEl().scrollTop = state.savedScrollTop;
+  });
 }
 
 function openDetail(id, list) {
   state.activeId = id;
   state.detailIndex = list.findIndex((i) => i.image_id === id);
-  state.detailOverride = null;
-  if (state.layout === "narrow") {
-    els.detail.classList.add("mobile-open");
-  }
+  if (state.layoutPreset === "b") enterViewMode();
   renderDetail(list);
   renderListOnly(list);
+}
+
+function pageThumbUrl(p) {
+  if (p.thumb_url) return p.thumb_url;
+  if (p.has_thumbnail && p.image_id) return `/api/images/${p.image_id}/thumbnail`;
+  return null;
 }
 
 async function fetchWorkContext(imageId) {
@@ -232,28 +346,85 @@ async function fetchWorkContext(imageId) {
     const res = await fetch(`/api/images/${encodeURIComponent(imageId)}`);
     if (!res.ok) return null;
     const data = await res.json();
-    return data.work ?? null;
+    const work = data.work;
+    if (work) {
+      const pageCount = work.page_count ?? 1;
+      return {
+        ...work,
+        title: work.title ?? data.work_title,
+        artist: work.artist ?? data.work_artist,
+        posted_at: data.posted_at ?? work.posted_at,
+        source_url: work.source_url ?? data.source_url,
+        multi_page: pageCount > 1,
+      };
+    }
+    if (data.route_tag === "route/pixiv" && (data.work_id || data.work_title)) {
+      return {
+        work_id: data.work_id,
+        title: data.work_title,
+        artist: data.work_artist,
+        posted_at: data.posted_at,
+        source_url: data.source_url,
+        page_count: 1,
+        multi_page: false,
+      };
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
-function pageThumbUrl(p) {
-  if (p.thumb_url) return p.thumb_url;
-  if (p.has_thumbnail && p.image_id) {
-    return `/api/images/${p.image_id}/thumbnail`;
+function isPixivItem(item) {
+  return item.route_tag === "route/pixiv";
+}
+
+function routeLabel(route) {
+  if (route === "route/pixiv") return "pixiv";
+  if (route === "route/under-iphone") return "under.iphone";
+  return route ?? "—";
+}
+
+function renderSubline(item, workCtx) {
+  els.detailSubline.innerHTML = "";
+  if (isPixivItem(item)) {
+    const artist = workCtx?.artist || item.work_artist;
+    const posted = workCtx?.posted_at || item.posted_at;
+    const url = workCtx?.source_url || item.source_url;
+    if (artist) {
+      const span = document.createElement("span");
+      span.textContent = artist;
+      els.detailSubline.appendChild(span);
+    }
+    if (posted) {
+      const span = document.createElement("span");
+      span.className = "dim";
+      span.textContent = posted;
+      els.detailSubline.appendChild(span);
+    }
+    if (url) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = "pixiv";
+      els.detailSubline.appendChild(a);
+    }
+    return;
   }
-  return null;
+  if (item.width && item.height) {
+    const span = document.createElement("span");
+    span.className = "dim";
+    span.textContent = `${item.width}×${item.height}`;
+    els.detailSubline.appendChild(span);
+  }
 }
 
 async function fetchWorkPages(workId) {
   if (!state.useApi) {
     return getMockWorkPages(workId).map((p) => ({
-      image_id: p.image_id,
-      page: p.page,
-      file_name: p.file_name,
-      thumbStyle: p.thumbStyle,
-      thumb_url: p.thumb_url,
+      ...p,
+      thumb_url: p.thumb_url ?? null,
     }));
   }
   try {
@@ -270,9 +441,8 @@ async function fetchWorkPages(workId) {
 }
 
 async function resolveDetailItem(list) {
-  if (state.detailOverride) return state.detailOverride;
   const fromList = state.detailIndex >= 0 ? list[state.detailIndex] : null;
-  if (fromList && fromList.image_id === state.activeId) return fromList;
+  if (fromList?.image_id === state.activeId) return fromList;
   const local = IMAGES.find((i) => i.image_id === state.activeId);
   if (local) return local;
   const fromApi = state.apiImages?.find((i) => i.image_id === state.activeId);
@@ -299,7 +469,6 @@ function renderPageStrip(activeId, pages) {
     btn.type = "button";
     btn.className = `page-strip-item${p.image_id === activeId ? " active" : ""}`;
     btn.title = p.file_name || `p${p.page ?? "?"}`;
-
     const thumbUrl = pageThumbUrl(p);
     if (thumbUrl) {
       const img = document.createElement("img");
@@ -310,15 +479,13 @@ function renderPageStrip(activeId, pages) {
     } else {
       const ph = document.createElement("span");
       ph.className = "ph";
-      Object.assign(ph.style, p.thumbStyle || { background: "#333", width: "52px", height: "52px" });
+      Object.assign(ph.style, p.thumbStyle || { background: "#333" });
       btn.appendChild(ph);
     }
-
     const label = document.createElement("span");
     label.className = "label";
     label.textContent = p.page != null ? `p${p.page}` : "?";
     btn.appendChild(label);
-
     btn.addEventListener("click", () => navWorkPage(p.image_id));
     els.pageStrip.appendChild(btn);
   }
@@ -327,44 +494,40 @@ function renderPageStrip(activeId, pages) {
   });
 }
 
-async function loadWorkPanel(item) {
-  if (!item) {
-    els.workPanel.hidden = true;
-    state.workContext = null;
-    state.workPages = [];
-    return;
-  }
-  state.workContext = await fetchWorkContext(item.image_id);
-  if (!state.workContext) {
-    els.workPanel.hidden = true;
-    state.workPages = [];
-    return;
-  }
+async function renderDetailContext(item) {
+  const workCtx = await fetchWorkContext(item.image_id);
+  state.workContext = workCtx?.multi_page ? workCtx : null;
 
-  els.workPanel.hidden = false;
-  els.workTitle.textContent = state.workContext.title || `作品 ${state.workContext.work_id}`;
-  els.workArtist.textContent = state.workContext.artist || "";
-  if (state.workContext.source_url) {
-    els.workLink.href = state.workContext.source_url;
-    els.workLink.style.display = "";
+  const pixiv = isPixivItem(item);
+  els.detailTitle.textContent =
+    pixiv && (item.work_title || workCtx?.title)
+      ? item.work_title || workCtx.title
+      : item.file_name;
+
+  renderSubline(item, workCtx);
+
+  const multiPage = !!workCtx?.multi_page;
+  els.detailPageSlot.classList.toggle("has-pages", multiPage);
+
+  if (multiPage) {
+    const pageLabel = workCtx.page ?? workCtx.page_index ?? 0;
+    els.workPos.textContent = `p${pageLabel} / ${workCtx.page_count}`;
+    els.workPrev.disabled = !workCtx.prev_image_id;
+    els.workNext.disabled = !workCtx.next_image_id;
+    const pages = await fetchWorkPages(workCtx.work_id);
+    renderPageStrip(item.image_id, pages);
   } else {
-    els.workLink.style.display = "none";
+    els.workPos.textContent = "—";
+    els.workPrev.disabled = true;
+    els.workNext.disabled = true;
+    els.pageStrip.innerHTML = "";
   }
-
-  const pageLabel = state.workContext.page ?? state.workContext.page_index;
-  els.workPos.textContent = `p${pageLabel} / ${state.workContext.page_count}`;
-  els.workPrev.disabled = !state.workContext.prev_image_id;
-  els.workNext.disabled = !state.workContext.next_image_id;
-
-  state.workPages = await fetchWorkPages(state.workContext.work_id);
-  renderPageStrip(item.image_id, state.workPages);
 }
 
 function navWorkPage(imageId) {
-  const list = filteredImages();
   state.activeId = imageId;
+  const list = filteredImages();
   state.detailIndex = list.findIndex((i) => i.image_id === imageId);
-  state.detailOverride = null;
   renderDetail(list);
   renderListOnly(list);
 }
@@ -375,79 +538,69 @@ function navWork(delta) {
   if (target) navWorkPage(target);
 }
 
-function closeDetailMobile() {
-  els.detail.classList.remove("mobile-open");
-  state.activeId = null;
-  render();
-}
-
 function renderDetail(list) {
   void (async () => {
     const item = await resolveDetailItem(list);
     if (!item) {
-      els.detailEmpty.style.display = "flex";
-      els.detailContent.style.display = "none";
-      els.workPanel.hidden = true;
+      els.detailEmpty.hidden = false;
+      els.detailContent.hidden = true;
+      state.workContext = null;
       return;
     }
-    els.detailEmpty.style.display = "none";
-    els.detailContent.style.display = "flex";
-    els.detailContent.style.flexDirection = "column";
-    els.detailContent.style.flex = "1";
-    els.detailContent.style.minHeight = "0";
-
-    const listPos = state.detailIndex >= 0 ? `${state.detailIndex + 1} / ${list.length}` : "—";
-    els.detailPos.textContent = listPos;
-
+    els.detailEmpty.hidden = true;
+    els.detailContent.hidden = false;
+    els.detailPos.textContent =
+      state.detailIndex >= 0 ? `${state.detailIndex + 1} / ${list.length}` : "—";
     els.detailImage.innerHTML = "";
-    if (item.thumb_url || item.preview_url) {
+    const src = item.preview_url || item.thumb_url;
+    if (src) {
       const img = document.createElement("img");
-      img.src = item.preview_url || item.thumb_url;
+      img.src = src;
       img.alt = item.file_name;
       els.detailImage.appendChild(img);
     } else {
       const ph = document.createElement("div");
       ph.className = "detail-ph";
-      Object.assign(ph.style, item.thumbStyle || { minWidth: "200px", minHeight: "280px" });
+      Object.assign(ph.style, item.thumbStyle || { minHeight: "240px" });
       els.detailImage.appendChild(ph);
     }
-
-    els.detailTags.innerHTML = (item.tags || [])
-      .map((t) => `<span class="chip neutral">${t}</span>`)
-      .join("");
+    els.detailTags.innerHTML = (item.tags || []).map((t) => `<span class="chip neutral">${t}</span>`).join("");
     els.detailMeta.innerHTML = `
       <dt>ID</dt><dd>${item.image_id}</dd>
       <dt>ファイル</dt><dd>${item.file_name}</dd>
-      <dt>ルート</dt><dd>${item.route_tag ?? "—"}</dd>
-      <dt>サイズ</dt><dd>${item.width ?? "?"}×${item.height ?? "?"}</dd>
+      <dt>ルート</dt><dd>${routeLabel(item.route_tag)}</dd>
     `;
-    els.detailCaption.textContent = item.vlm_caption || "（キャプションなし）";
-    els.detailOcr.value = item.ocr_text || "";
-
     els.similarStrip.innerHTML = "";
-    const sim = list.filter((i) => i.image_id !== item.image_id).slice(0, 8);
+    const sim = (state.useApi ? list : IMAGES).filter((i) => i.image_id !== item.image_id).slice(0, 8);
     for (const s of sim) {
-      const m = document.createElement("div");
+      const m = document.createElement("button");
+      m.type = "button";
       m.className = "mini";
-      Object.assign(m.style, s.thumbStyle || {});
-      m.title = s.file_name;
+      Object.assign(m.style, s.thumbStyle || { background: "#444", width: "56px", height: "56px" });
+      if (s.thumb_url) {
+        m.style.background = `center/cover url(${s.thumb_url})`;
+      }
+      m.title = "詳細へ";
       m.addEventListener("click", () => openDetail(s.image_id, list));
       els.similarStrip.appendChild(m);
     }
-
-    await loadWorkPanel(item);
+    els.btnSimilarReflux.disabled = false;
+    els.btnSimilarReflux.dataset.imageId = item.image_id;
+    await renderDetailContext(item);
   })();
 }
 
 function renderListOnly(list) {
-  $$(".image-card").forEach((c) => {
-    c.classList.toggle("active", c.dataset.id === state.activeId);
+  $$(".image-card").forEach((c) => c.classList.toggle("active", c.dataset.id === state.activeId));
+  $$(".image-table tbody tr").forEach((tr, i) => {
+    const id = list[i]?.image_id;
+    tr.classList.toggle("active", id === state.activeId);
   });
 }
 
 function onCardClick(item, e) {
   const list = filteredImages();
-  if (state.selectMode || e.shiftKey) {
+  if (e.shiftKey) {
     if (state.selected.has(item.image_id)) state.selected.delete(item.image_id);
     else state.selected.add(item.image_id);
     renderBulkBar();
@@ -463,78 +616,57 @@ function renderBulkBar() {
   els.bulkCount.textContent = `${n} 件選択`;
 }
 
-function applyLayout() {
-  const app = els.app;
-  app.classList.remove("narrow", "detail-bottom");
-  els.main.classList.remove("no-sidebar", "no-detail", "detail-bottom-layout");
+function applyShellClasses() {
+  els.app.classList.remove("layout-a", "layout-b", "mode-explore", "mode-view");
+  els.app.classList.add(state.layoutPreset === "b" ? "layout-b" : "layout-a");
+  els.app.classList.add(state.appMode === "view" ? "mode-view" : "mode-explore");
+  els.layoutBadge.textContent = state.layoutPreset === "b" ? "案 B" : "案 A";
+  els.modeBadge.textContent = state.appMode === "view" ? "閲覧" : "探索";
+  els.navHint.textContent =
+    state.layoutPreset === "b"
+      ? "クリック → 閲覧モード · Esc → 探索へ"
+      : "クリック → 右ペイン · Shift+クリック → 複数選択";
+  els.btnBackExplore.hidden = !(state.layoutPreset === "b" && state.appMode === "view");
+}
 
-  const showSidebar = $("#lab-sidebar").checked;
-  const showDetail = $("#lab-detail").checked;
-  const layout = $("#lab-layout").value;
-
-  if (layout === "narrow") {
-    app.classList.add("narrow");
-    state.layout = "narrow";
-  } else {
-    state.layout = layout === "wide-bottom" ? "wide-bottom" : "wide-right";
-    if (layout === "wide-bottom") {
-      app.classList.add("detail-bottom");
-      els.main.classList.add("detail-bottom-layout");
-    }
-  }
-
-  if (!showSidebar) els.main.classList.add("no-sidebar");
-  if (!showDetail) els.main.classList.add("no-detail");
-
+function applyLayoutVars() {
   document.documentElement.style.setProperty("--sidebar-w", `${$("#lab-sidebar-w").value}px`);
   document.documentElement.style.setProperty("--detail-w", `${$("#lab-detail-w").value}px`);
   document.documentElement.style.setProperty("--grid-cols", $("#lab-cols").value);
-
-  const w = $("#lab-width").value;
-  if (layout === "custom") {
-    app.style.maxWidth = `${w}px`;
-    app.style.margin = "0 auto";
-    app.style.borderLeft = "1px solid var(--border)";
-    app.style.borderRight = "1px solid var(--border)";
-  } else {
-    app.style.maxWidth = "";
-    app.style.margin = "";
-    app.style.border = "";
-  }
 }
 
 function render() {
   const list = filteredImages();
   els.resultCount.textContent = `${list.length.toLocaleString()} 件`;
+  renderBreadcrumb();
   renderChips();
   renderTagList();
   if (state.viewMode === "grid") {
-    els.grid.style.display = "grid";
-    els.tableWrap.style.display = "none";
+    els.grid.hidden = false;
+    els.tableWrap.hidden = true;
     renderGrid(list);
   } else {
-    els.grid.style.display = "none";
-    els.tableWrap.style.display = "block";
+    els.grid.hidden = true;
+    els.tableWrap.hidden = false;
     renderTable(list);
   }
   if (state.activeId) {
     const idx = list.findIndex((i) => i.image_id === state.activeId);
-    if (idx >= 0) {
-      state.detailIndex = idx;
-      renderDetail(list);
-    }
-  } else if (state.layout !== "narrow") {
-    els.detailEmpty.style.display = "flex";
-    els.detailContent.style.display = "none";
+    if (idx >= 0) state.detailIndex = idx;
+    renderDetail(list);
+  } else if (state.layoutPreset === "a" && state.appMode === "explore") {
+    els.detailEmpty.hidden = false;
+    els.detailContent.hidden = true;
   }
   renderBulkBar();
-  applyLayout();
+  applyShellClasses();
+  applyLayoutVars();
 }
 
 async function tryLoadApi() {
   if (!state.useApi) return;
   try {
-    const params = new URLSearchParams({ limit: "60", q: state.query });
+    const params = new URLSearchParams({ limit: "80", q: state.query.replace(/similar_to:\S+/g, "").trim() });
     if (state.route !== "all") params.set("route_tag", state.route);
     const res = await fetch(`/api/images?${params}`);
     if (!res.ok) throw new Error(res.statusText);
@@ -543,22 +675,48 @@ async function tryLoadApi() {
       ...item,
       thumb_url: `/api/images/${item.image_id}/thumbnail`,
       preview_url: `/api/images/${item.image_id}/preview`,
-      vlm_caption: "",
       ocr_text: "",
     }));
   } catch (err) {
-    console.warn("API fallback to mock:", err);
+    console.warn("API fallback:", err);
     state.apiImages = null;
     state.useApi = false;
     $("#lab-api").checked = false;
   }
 }
 
+function navDetail(delta) {
+  const list = filteredImages();
+  if (!list.length || state.detailIndex < 0) return;
+  state.detailIndex = Math.max(0, Math.min(list.length - 1, state.detailIndex + delta));
+  state.activeId = list[state.detailIndex].image_id;
+  renderDetail(list);
+  renderListOnly(list);
+}
+
+let debounceTimer;
+function debouncedRender() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(async () => {
+    if (state.useApi) await tryLoadApi();
+    render();
+  }, 280);
+}
+
 function bindEvents() {
-  els.queryInput.addEventListener("input", () => {
+  els.queryInput.addEventListener("change", () => {
     state.query = els.queryInput.value;
     parseQueryTags(state.query);
+    commitQueryToOrigin();
     debouncedRender();
+  });
+  els.queryInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      state.query = els.queryInput.value;
+      parseQueryTags(state.query);
+      commitQueryToOrigin();
+      debouncedRender();
+    }
   });
 
   $$(".route-tabs button").forEach((btn) => {
@@ -566,6 +724,7 @@ function bindEvents() {
       $$(".route-tabs button").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       state.route = btn.dataset.route;
+      commitQueryToOrigin();
       debouncedRender();
     });
   });
@@ -588,7 +747,16 @@ function bindEvents() {
   els.detailNext.addEventListener("click", () => navDetail(1));
   els.workPrev.addEventListener("click", () => navWork(-1));
   els.workNext.addEventListener("click", () => navWork(1));
-  els.detailClose.addEventListener("click", closeDetailMobile);
+  els.btnBackExplore.addEventListener("click", () => {
+    exitViewMode();
+  });
+  els.btnSimilarReflux.addEventListener("click", () => {
+    const id = els.btnSimilarReflux.dataset.imageId;
+    if (id) {
+      if (state.layoutPreset === "b") exitViewMode();
+      pushSimilarReflux(id);
+    }
+  });
 
   $$(".similar-tabs button").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -598,28 +766,23 @@ function bindEvents() {
     });
   });
 
-  els.filterToggle.addEventListener("click", () => els.bottomSheet.classList.add("open"));
-  els.sheetClose.addEventListener("click", () => els.bottomSheet.classList.remove("open"));
-  els.sheetBackdrop.addEventListener("click", () => els.bottomSheet.classList.remove("open"));
+  $("#lab-preset").addEventListener("change", (e) => {
+    state.layoutPreset = e.target.value;
+    state.appMode = "explore";
+    render();
+  });
 
-  $("#lab-layout").addEventListener("change", render);
-  $("#lab-sidebar").addEventListener("change", render);
-  $("#lab-detail").addEventListener("change", render);
   $("#lab-cols").addEventListener("input", () => {
     $("#lab-cols-val").textContent = $("#lab-cols").value;
-    render();
+    applyLayoutVars();
   });
   $("#lab-sidebar-w").addEventListener("input", () => {
     $("#lab-sidebar-w-val").textContent = `${$("#lab-sidebar-w").value}px`;
-    render();
+    applyLayoutVars();
   });
   $("#lab-detail-w").addEventListener("input", () => {
     $("#lab-detail-w-val").textContent = `${$("#lab-detail-w").value}px`;
-    render();
-  });
-  $("#lab-width").addEventListener("input", () => {
-    $("#lab-width-val").textContent = `${$("#lab-width").value}px`;
-    render();
+    applyLayoutVars();
   });
   $("#lab-table-thumb").addEventListener("input", () => {
     const size = $("#lab-table-thumb").value;
@@ -635,6 +798,16 @@ function bindEvents() {
   els.tagFilter.addEventListener("input", render);
   els.labToggle.addEventListener("click", () => els.lab.classList.toggle("collapsed"));
 
+  els.detailImage.addEventListener(
+    "wheel",
+    (e) => {
+      if (!state.activeId) return;
+      e.preventDefault();
+      navDetail(e.deltaY > 0 ? 1 : -1);
+    },
+    { passive: false },
+  );
+
   document.addEventListener("keydown", (e) => {
     if (e.target.matches("input, textarea, select")) {
       if (e.key === "Escape") e.target.blur();
@@ -644,40 +817,38 @@ function bindEvents() {
       e.preventDefault();
       els.queryInput.focus();
     }
-    if (state.activeId == null) return;
-    if (e.shiftKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
-      e.preventDefault();
-      navWork(e.key === "ArrowLeft" ? -1 : 1);
-      return;
-    }
-    if (e.key === "ArrowLeft") navDetail(-1);
-    if (e.key === "ArrowRight") navDetail(1);
     if (e.key === "Escape") {
-      if (state.layout === "narrow") closeDetailMobile();
-      else {
+      if (state.layoutPreset === "b" && state.appMode === "view") {
+        exitViewMode();
+        return;
+      }
+      if (state.activeId && state.layoutPreset === "a") {
         state.activeId = null;
+        state.detailIndex = -1;
         render();
       }
+      return;
+    }
+    if (state.activeId == null) return;
+    if (e.key === "[" || (e.key === "ArrowLeft" && e.shiftKey)) {
+      e.preventDefault();
+      navWork(-1);
+      return;
+    }
+    if (e.key === "]" || (e.key === "ArrowRight" && e.shiftKey)) {
+      e.preventDefault();
+      navWork(1);
+      return;
+    }
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      navDetail(-1);
+    }
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      navDetail(+1);
     }
   });
-}
-
-function navDetail(delta) {
-  const list = filteredImages();
-  if (!list.length) return;
-  state.detailIndex = Math.max(0, Math.min(list.length - 1, state.detailIndex + delta));
-  state.activeId = list[state.detailIndex].image_id;
-  renderDetail(list);
-  renderListOnly(list);
-}
-
-let debounceTimer;
-function debouncedRender() {
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(async () => {
-    if (state.useApi) await tryLoadApi();
-    render();
-  }, 300);
 }
 
 function init() {
@@ -688,10 +859,12 @@ function init() {
   els.queryInput = $("#query-input");
   els.chipRow = $("#chip-row");
   els.queryNote = $("#query-note");
+  els.breadcrumb = $("#breadcrumb");
   els.tagList = $("#tag-list");
   els.tagFilter = $("#tag-filter");
   els.resultCount = $("#result-count");
   els.sortSelect = $("#sort-select");
+  els.navHint = $("#nav-hint");
   els.detail = $("#detail-pane");
   els.detailEmpty = $("#detail-empty");
   els.detailContent = $("#detail-content");
@@ -699,31 +872,26 @@ function init() {
   els.detailPos = $("#detail-pos");
   els.detailPrev = $("#detail-prev");
   els.detailNext = $("#detail-next");
-  els.detailClose = $("#detail-close");
-  els.workPanel = $("#work-panel");
-  els.workTitle = $("#work-title");
-  els.workArtist = $("#work-artist");
-  els.workLink = $("#work-link");
+  els.detailTitle = $("#detail-title");
+  els.detailSubline = $("#detail-subline");
+  els.detailPageSlot = $("#detail-page-slot");
   els.workPos = $("#work-pos");
   els.workPrev = $("#work-prev");
   els.workNext = $("#work-next");
   els.pageStrip = $("#page-strip");
   els.detailTags = $("#detail-tags");
   els.detailMeta = $("#detail-meta");
-  els.detailCaption = $("#detail-caption");
-  els.detailOcr = $("#detail-ocr");
   els.similarStrip = $("#similar-strip");
+  els.btnSimilarReflux = $("#btn-similar-reflux");
   els.bulkBar = $("#bulk-bar");
   els.bulkCount = $("#bulk-count");
-  els.filterToggle = $("#filter-toggle");
-  els.bottomSheet = $("#bottom-sheet");
-  els.sheetClose = $("#sheet-close");
-  els.sheetBackdrop = $("#sheet-backdrop");
+  els.modeBadge = $("#mode-badge");
+  els.layoutBadge = $("#layout-badge");
+  els.btnBackExplore = $("#btn-back-explore");
   els.lab = $("#mockup-lab");
   els.labToggle = $("#lab-toggle");
 
   bindEvents();
-  els.queryInput.value = state.query;
   render();
 }
 
