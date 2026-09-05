@@ -32,7 +32,8 @@ Basic 認証（Tailscale 内限定 + アプリレベル）。
 | Method | Path | 説明 | 状態 |
 |---|---|---|---|
 | GET | `/api/images` | イメージリスト（`q`, `route_tag`, `limit`, `offset`） | MVP 実装済 |
-| GET | `/api/images/{image_id}` | 画像詳細 | Phase 1 骨格済 |
+| GET | `/api/images/{image_id}` | 画像詳細（`work` コンテキスト付き） | MVP 実装済 |
+| GET | `/api/works/{work_id}/pages` | pixiv 作品の全ページ一覧（`limit`, `offset`） | MVP 実装済 |
 
 ### タグ
 

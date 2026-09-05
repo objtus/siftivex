@@ -1,4 +1,4 @@
-.PHONY: help install install-embed install-ocr install-api pipeline list-tasks init-db select-sample import-manifest review build-vocabulary task-0.1 task-0.2 task-0.2b task-0.7 migrate-db ingest process-jobs embed-pending batch-archive vlm-overnight api-dev n8n-status n8n-ingest n8n-embed n8n-vlm
+.PHONY: help install install-embed install-ocr install-api pipeline list-tasks init-db select-sample import-manifest review build-vocabulary task-0.1 task-0.2 task-0.2b task-0.7 migrate-db ingest process-jobs embed-pending batch-archive vlm-overnight api-dev mockup-dev n8n-status n8n-ingest n8n-embed n8n-vlm
 
 PYTHON ?= python3
 VENV ?= .venv
@@ -89,6 +89,10 @@ vlm-overnight:
 
 api-dev:
 	$(PY) -m siftivex.api.main --host 127.0.0.1 --port 8787
+
+MOCKUP_PORT ?= 5199
+mockup-dev:
+	$(PY) scripts/mockup_server.py --port $(MOCKUP_PORT)
 
 N8N_LIMIT ?= 500
 n8n-status:

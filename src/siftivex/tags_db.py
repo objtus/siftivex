@@ -69,6 +69,22 @@ def apply_filename_tags(conn: sqlite3.Connection, image_id: str, filename: str) 
     return tags
 
 
+def apply_pixiv_tags(conn: sqlite3.Connection, image_id: str, tags: list[str]) -> list[str]:
+    """Apply pixiv downloader tags from sidecar / filename parser."""
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for tag in tags:
+        if not isinstance(tag, str):
+            continue
+        tag = tag.strip()
+        if not tag or tag in seen:
+            continue
+        seen.add(tag)
+        cleaned.append(tag)
+    replace_tags(conn, image_id, "filename", cleaned)
+    return cleaned
+
+
 def effective_tags(conn: sqlite3.Connection, image_id: str) -> list[str]:
     rows = conn.execute(
         """

@@ -12,6 +12,7 @@ from siftivex.paths import DEFAULT_DB_PATH, DEFAULT_LANCE_PATH, DEFAULT_THUMBNAI
 from siftivex.search import image_to_dict, search_images
 from siftivex.tags_db import effective_tags
 from siftivex.thumbnails import ThumbnailPaths, thumbnail_dir
+from siftivex.works import get_work_pages, validate_work_id, work_context_for_image
 
 app = FastAPI(title="Siftivex", version="0.2.0")
 
@@ -70,6 +71,10 @@ def list_images(
         conn.close()
 
 
+def _has_thumbnail(image_id: str) -> bool:
+    return _thumb_paths(image_id).thumb.is_file()
+
+
 @app.get("/api/images/{image_id}")
 def get_image(image_id: str) -> dict:
     conn = get_connection(DEFAULT_DB_PATH)
@@ -88,6 +93,7 @@ def get_image(image_id: str) -> dict:
             "SELECT COALESCE(manual_ocr, auto_ocr, '') AS text FROM image_ocr WHERE image_id = ?",
             (image_id,),
         ).fetchone()
+        work = work_context_for_image(conn, image_id)
     finally:
         conn.close()
 
@@ -104,7 +110,34 @@ def get_image(image_id: str) -> dict:
         "ocr_text": ocr["text"] if ocr else "",
         "has_thumbnail": thumbs.thumb.is_file(),
         "has_preview": thumbs.preview.is_file(),
+        "work": work,
     }
+
+
+@app.get("/api/works/{work_id}/pages")
+def list_work_pages(
+    work_id: str,
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+) -> dict:
+    if not validate_work_id(work_id):
+        raise HTTPException(status_code=400, detail="invalid work_id")
+
+    conn = get_connection(DEFAULT_DB_PATH)
+    try:
+        result = get_work_pages(
+            conn,
+            work_id,
+            limit=limit,
+            offset=offset,
+            has_thumbnail=_has_thumbnail,
+        )
+    finally:
+        conn.close()
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="work not found")
+    return result
 
 
 @app.get("/api/images/{image_id}/thumbnail")

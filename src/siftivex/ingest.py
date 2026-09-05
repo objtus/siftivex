@@ -16,7 +16,7 @@ from siftivex.ids import content_hash, image_id_from_hash
 from siftivex.ocr import ocr_engine_available, run_ocr
 from siftivex.pixiv_filename import parse_pixiv_filename
 from siftivex.search_index import upsert_image_search
-from siftivex.tags_db import apply_filename_tags, replace_tags
+from siftivex.tags_db import apply_filename_tags, apply_pixiv_tags, replace_tags
 from siftivex.thumbnails import generate_thumbnails, supports_thumbnails
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".webm"}
@@ -150,13 +150,23 @@ def write_pixiv_metadata(conn: sqlite3.Connection, image_id: str, meta: dict) ->
     )
 
 
-def apply_profile_tags(conn: sqlite3.Connection, image_id: str, path: Path, profile: IngestProfile) -> None:
+def apply_profile_tags(
+    conn: sqlite3.Connection,
+    image_id: str,
+    path: Path,
+    profile: IngestProfile,
+    *,
+    pixiv_meta: dict | None = None,
+) -> None:
     if profile.fixed_tags:
         replace_tags(conn, image_id, "manual_added", list(profile.fixed_tags))
     if profile.parser == "under_iphone_legacy_v1":
         apply_filename_tags(conn, image_id, path.name)
     elif profile.metadata == "pixiv_hybrid":
-        if parse_legacy_filename_tags(path.name):
+        pixiv_tags = (pixiv_meta or {}).get("pixiv_tags") or []
+        if pixiv_tags:
+            apply_pixiv_tags(conn, image_id, pixiv_tags)
+        elif parse_legacy_filename_tags(path.name):
             apply_filename_tags(conn, image_id, path.name)
 
 
@@ -251,13 +261,14 @@ def ingest_file(
     image_id, is_new = upsert_image_row(conn, path, route_tag=resolved_route)
 
     metadata_written = False
+    pixiv_meta: dict | None = None
     if profile and profile.metadata == "pixiv_hybrid":
-        meta = resolve_pixiv_metadata(path)
-        if meta:
-            write_pixiv_metadata(conn, image_id, meta)
+        pixiv_meta = resolve_pixiv_metadata(path)
+        if pixiv_meta:
+            write_pixiv_metadata(conn, image_id, pixiv_meta)
             metadata_written = True
     if profile:
-        apply_profile_tags(conn, image_id, path, profile)
+        apply_profile_tags(conn, image_id, path, profile, pixiv_meta=pixiv_meta)
 
     thumbnails_created = False
     ocr_done = False

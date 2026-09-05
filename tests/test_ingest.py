@@ -123,6 +123,42 @@ def test_pixiv_sidecar_metadata(db_conn: sqlite3.Connection, tmp_path: Path):
     ).fetchone()
     assert meta == ("test_artist", "4826")
 
+    tags = db_conn.execute(
+        "SELECT tag FROM image_tags WHERE image_id = ? AND source = 'filename' ORDER BY tag",
+        (result.image_id,),
+    ).fetchall()
+    assert [r[0] for r in tags] == ["tag1"]
+
+
+def test_pixiv_short_filename_does_not_tag_page_number(db_conn: sqlite3.Connection, tmp_path: Path):
+    """4826_p0.jpg must not produce filename tag 'p0'."""
+    img = tmp_path / "4826_p0.jpg"
+    write_png(img, (10, 20, 30))
+    sidecar = tmp_path / "4826_p0.pixiv.json"
+    sidecar.write_text(
+        json.dumps(
+            {
+                "work_id": "4826",
+                "pixiv_tags": ["東方", "博麗霊夢"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    profile = IngestProfile(name="pixiv", route_tag="route/pixiv", metadata="pixiv_hybrid")
+    rules = FolderRules(rules=(FolderRule(path_prefix=tmp_path, profile=profile),))
+
+    ingest_file(img, db_conn, folder_rules=rules, skip_ocr=True)
+    tags = [
+        r[0]
+        for r in db_conn.execute(
+            "SELECT tag FROM image_tags WHERE image_id = ? AND source = 'filename' ORDER BY tag",
+            (db_conn.execute("SELECT image_id FROM images").fetchone()[0],),
+        ).fetchall()
+    ]
+    assert set(tags) == {"東方", "博麗霊夢"}
+    assert "p0" not in tags
+
 
 def test_ocr_queues_when_engine_unavailable(db_conn: sqlite3.Connection, tmp_path: Path, monkeypatch):
     img = tmp_path / "ocr.png"
