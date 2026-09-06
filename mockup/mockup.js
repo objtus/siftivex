@@ -764,7 +764,8 @@ async function tryLoadApi() {
 function navDetail(delta) {
   const list = filteredImages();
   if (!list.length || state.detailIndex < 0) return;
-  state.detailIndex = Math.max(0, Math.min(list.length - 1, state.detailIndex + delta));
+  const n = list.length;
+  state.detailIndex = ((state.detailIndex + delta) % n + n) % n;
   state.activeId = list[state.detailIndex].image_id;
   renderDetail(list);
   renderListOnly(list);
