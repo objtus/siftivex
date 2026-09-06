@@ -1097,6 +1097,7 @@ a {
   max-height: 100%;
   border-radius: 6px;
   object-fit: contain;
+  background: #08090c;
 }
 
 .layout-b.mode-view .detail-image-wrap {

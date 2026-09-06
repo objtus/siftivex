@@ -26,6 +26,10 @@ const state = {
 
 const els = {};
 
+let detailRenderGen = 0;
+let detailContextTimer = null;
+const detailImageCache = new Map();
+
 function listScrollEl() {
   return state.viewMode === "grid" ? els.grid : els.tableWrap;
 }
@@ -518,13 +522,10 @@ async function fetchWorkPages(workId) {
 }
 
 async function resolveDetailItem(list) {
-  if (!state.useApi) {
-    const fromList = state.detailIndex >= 0 ? list[state.detailIndex] : null;
-    if (fromList?.image_id === state.activeId) return fromList;
-    return IMAGES.find((i) => i.image_id === state.activeId) ?? null;
-  }
+  const sync = resolveDetailItemSync(list);
+  if (sync) return sync;
 
-  if (!state.activeId) return null;
+  if (!state.useApi || !state.activeId) return null;
   try {
     const res = await fetch(`/api/images/${encodeURIComponent(state.activeId)}`);
     if (!res.ok) return null;
@@ -535,10 +536,99 @@ async function resolveDetailItem(list) {
       preview_url: data.has_preview ? `/api/images/${data.image_id}/preview` : null,
     };
   } catch {
-    const fromList = state.detailIndex >= 0 ? list[state.detailIndex] : null;
-    if (fromList?.image_id === state.activeId) return fromList;
-    return state.apiImages?.find((i) => i.image_id === state.activeId) ?? null;
+    return null;
   }
+}
+
+function resolveDetailItemSync(list) {
+  const fromList = state.detailIndex >= 0 ? list[state.detailIndex] : null;
+  if (fromList?.image_id === state.activeId) return fromList;
+  if (!state.useApi) return IMAGES.find((i) => i.image_id === state.activeId) ?? null;
+  return state.apiImages?.find((i) => i.image_id === state.activeId) ?? null;
+}
+
+function detailImageSrc(item) {
+  return item?.preview_url || item?.thumb_url || null;
+}
+
+async function preloadDetailImage(src) {
+  if (!src) return null;
+  const cached = detailImageCache.get(src);
+  if (cached?.complete) return cached;
+  const img = cached ?? new Image();
+  img.decoding = "async";
+  img.src = src;
+  if (detailImageCache.size >= 64) {
+    detailImageCache.delete(detailImageCache.keys().next().value);
+  }
+  detailImageCache.set(src, img);
+  try {
+    await img.decode();
+  } catch {
+    if (!img.complete) {
+      await new Promise((resolve) => {
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
+      });
+    }
+  }
+  return img;
+}
+
+function createDetailPlaceholder(item) {
+  const ph = document.createElement("div");
+  ph.className = "detail-ph";
+  Object.assign(ph.style, item.thumbStyle || { minHeight: "240px" });
+  return ph;
+}
+
+function applyDetailImageSrc(src, alt) {
+  const absoluteSrc = new URL(src, location.href).href;
+  let img = els.detailImage.querySelector("img");
+  if (!img) {
+    img = document.createElement("img");
+    els.detailImage.replaceChildren(img);
+  }
+  img.alt = alt;
+  if (img.src !== absoluteSrc) img.src = src;
+}
+
+async function updateDetailImage(item, gen) {
+  const src = detailImageSrc(item);
+  if (!src) {
+    if (gen !== detailRenderGen) return;
+    els.detailImage.replaceChildren(createDetailPlaceholder(item));
+    return;
+  }
+
+  const cached = detailImageCache.get(src);
+  if (cached?.complete) {
+    if (gen !== detailRenderGen) return;
+    applyDetailImageSrc(src, item.file_name);
+    return;
+  }
+
+  await preloadDetailImage(src);
+  if (gen !== detailRenderGen) return;
+  applyDetailImageSrc(src, item.file_name);
+}
+
+function prefetchDetailNeighbors(list) {
+  if (!list.length || state.detailIndex < 0) return;
+  const n = list.length;
+  for (const delta of [-1, 1]) {
+    const idx = (state.detailIndex + delta + n) % n;
+    const src = detailImageSrc(list[idx]);
+    if (src) preloadDetailImage(src).catch(() => {});
+  }
+}
+
+function scheduleDetailContext(item, gen) {
+  clearTimeout(detailContextTimer);
+  detailContextTimer = setTimeout(() => {
+    if (gen !== detailRenderGen) return;
+    void renderDetailContext(item);
+  }, 150);
 }
 
 function renderPageStrip(activeId, pages) {
@@ -614,56 +704,69 @@ function navWork(delta) {
 }
 
 function renderDetail(list) {
-  void (async () => {
-    const item = await resolveDetailItem(list);
-    if (!item) {
-      els.detailEmpty.hidden = false;
-      els.detailContent.hidden = true;
-      state.workContext = null;
-      return;
-    }
-    els.detailEmpty.hidden = true;
-    els.detailContent.hidden = false;
-    els.detailPos.textContent =
-      state.detailIndex >= 0 ? `${state.detailIndex + 1} / ${list.length}` : "—";
-    els.detailImage.innerHTML = "";
-    const src = item.preview_url || item.thumb_url;
-    if (src) {
-      const img = document.createElement("img");
-      img.src = src;
-      img.alt = item.file_name;
-      els.detailImage.appendChild(img);
-    } else {
-      const ph = document.createElement("div");
-      ph.className = "detail-ph";
-      Object.assign(ph.style, item.thumbStyle || { minHeight: "240px" });
-      els.detailImage.appendChild(ph);
-    }
-    els.detailTags.innerHTML = "";
-    renderDetailTags(item.tags || []);
-    els.detailMeta.innerHTML = `
-      <dt>ID</dt><dd>${item.image_id}</dd>
-      <dt>ファイル</dt><dd>${item.file_name}</dd>
-      <dt>ルート</dt><dd>${routeLabel(item.route_tag)}</dd>
-    `;
-    els.similarStrip.innerHTML = "";
-    const sim = (state.useApi ? list : IMAGES).filter((i) => i.image_id !== item.image_id).slice(0, 8);
-    for (const s of sim) {
-      const m = document.createElement("button");
-      m.type = "button";
-      m.className = "mini";
-      Object.assign(m.style, s.thumbStyle || { background: "#444", width: "56px", height: "56px" });
-      if (s.thumb_url) {
-        m.style.background = `center/cover url(${s.thumb_url})`;
+  const gen = ++detailRenderGen;
+  const item = resolveDetailItemSync(list);
+
+  if (!item) {
+    void (async () => {
+      const fetched = await resolveDetailItem(list);
+      if (gen !== detailRenderGen) return;
+      if (!fetched) {
+        els.detailEmpty.hidden = false;
+        els.detailContent.hidden = true;
+        state.workContext = null;
+        return;
       }
-      m.title = "詳細へ";
-      m.addEventListener("click", () => openDetail(s.image_id, list));
-      els.similarStrip.appendChild(m);
+      renderDetailBody(list, fetched, gen);
+    })();
+    return;
+  }
+
+  renderDetailBody(list, item, gen);
+}
+
+function renderDetailBody(list, item, gen) {
+  els.detailEmpty.hidden = true;
+  els.detailContent.hidden = false;
+  els.detailPos.textContent =
+    state.detailIndex >= 0 ? `${state.detailIndex + 1} / ${list.length}` : "—";
+
+  void updateDetailImage(item, gen);
+  prefetchDetailNeighbors(list);
+
+  els.detailTags.innerHTML = "";
+  renderDetailTags(item.tags || []);
+  els.detailMeta.innerHTML = `
+    <dt>ID</dt><dd>${item.image_id}</dd>
+    <dt>ファイル</dt><dd>${item.file_name}</dd>
+    <dt>ルート</dt><dd>${routeLabel(item.route_tag)}</dd>
+  `;
+  els.similarStrip.innerHTML = "";
+  const sim = (state.useApi ? list : IMAGES).filter((i) => i.image_id !== item.image_id).slice(0, 8);
+  for (const s of sim) {
+    const m = document.createElement("button");
+    m.type = "button";
+    m.className = "mini";
+    Object.assign(m.style, s.thumbStyle || { background: "#444", width: "56px", height: "56px" });
+    if (s.thumb_url) {
+      m.style.background = `center/cover url(${s.thumb_url})`;
     }
-    els.btnSimilarReflux.disabled = false;
-    els.btnSimilarReflux.dataset.imageId = item.image_id;
-    await renderDetailContext(item);
-  })();
+    m.title = "詳細へ";
+    m.addEventListener("click", () => openDetail(s.image_id, list));
+    els.similarStrip.appendChild(m);
+  }
+  els.btnSimilarReflux.disabled = false;
+  els.btnSimilarReflux.dataset.imageId = item.image_id;
+
+  scheduleDetailContext(item, gen);
+
+  if (!item.metadata && state.useApi) {
+    void (async () => {
+      const full = await resolveDetailItem(list);
+      if (gen !== detailRenderGen || !full) return;
+      scheduleDetailContext(full, gen);
+    })();
+  }
 }
 
 function renderListOnly(list) {
