@@ -45,34 +45,85 @@ function cycleTag(tag) {
   render();
 }
 
+function queryTextOnly(q) {
+  return q
+    .replace(/-?tag:[^\s]+/g, "")
+    .replace(/similar_to:\S+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function syncQueryFromTags() {
   const parts = [];
   for (const [tag, s] of Object.entries(state.tagStates)) {
     if (s === 1) parts.push(`tag:${tag}`);
     if (s === 2) parts.push(`-tag:${tag}`);
   }
-  const text = state.query.replace(/(?:^-?tag:[^\s]+\s*)+/g, "").trim();
-  state.query = [...parts, text].filter(Boolean).join(" ");
+  const text = queryTextOnly(state.query);
+  state.query = [...parts, text].filter(Boolean).join(" ").trim();
+  if (els.queryInput) els.queryInput.value = state.query;
+}
+
+function removeTagFilter(tag) {
+  clearTimeout(debounceTimer);
+  if (TAGS.includes(tag)) state.tagStates[tag] = 0;
+  else delete state.tagStates[tag];
+  syncQueryFromTags();
+  commitQueryToOrigin();
+  void refreshList();
+}
+
+async function refreshList() {
+  if (state.useApi) await tryLoadApi();
+  render();
 }
 
 function parseQueryTags(q) {
-  for (const tag of TAGS) state.tagStates[tag] = 0;
+  state.tagStates = Object.fromEntries(TAGS.map((t) => [t, 0]));
   const re = /(-?)tag:([^\s]+)/g;
   let m;
   while ((m = re.exec(q)) !== null) {
     const excl = m[1] === "-";
     const tag = m[2];
-    if (TAGS.includes(tag)) state.tagStates[tag] = excl ? 2 : 1;
+    state.tagStates[tag] = excl ? 2 : 1;
   }
   state.query = q;
 }
 
-function queryTextOnly(q) {
-  return q
-    .replace(/(?:^-?tag:[^\s]+\s*)+/g, "")
-    .replace(/(?:\s+-?tag:[^\s]+)+/g, "")
-    .replace(/similar_to:\S+/g, "")
-    .trim();
+function applyQueryInput() {
+  state.query = els.queryInput.value;
+  parseQueryTags(state.query);
+  commitQueryToOrigin();
+  debouncedRender();
+}
+
+function filterByTagFromDetail(tag) {
+  clearTimeout(debounceTimer);
+  if (state.tagStates[tag] === 1) {
+    if (TAGS.includes(tag)) state.tagStates[tag] = 0;
+    else delete state.tagStates[tag];
+  } else {
+    state.tagStates[tag] = 1;
+  }
+  syncQueryFromTags();
+  commitQueryToOrigin();
+  if (state.layoutPreset === "b" && state.appMode === "view") exitViewMode();
+  void refreshList();
+}
+
+function renderDetailTags(tags) {
+  els.detailTags.innerHTML = "";
+  for (const t of tags || []) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "chip neutral tag-filter";
+    if (state.tagStates[t] === 1) btn.classList.add("include");
+    if (state.tagStates[t] === 2) btn.classList.add("exclude");
+    btn.textContent = t;
+    btn.title = state.tagStates[t] === 1 ? "絞り込みを解除" : "このタグで絞り込む";
+    btn.addEventListener("click", () => filterByTagFromDetail(t));
+    els.detailTags.appendChild(btn);
+  }
 }
 
 function ocrExcerpt(item) {
@@ -223,8 +274,7 @@ function renderThumb(el, item, mode = "grid") {
     ph.style.background = item.thumbStyle?.background || "#2a3140";
   } else {
     ph.className = "thumb-placeholder";
-    Object.assign(ph.style, item.thumbStyle || {});
-    ph.style.aspectRatio = "1";
+    if (item.thumbStyle?.background) ph.style.background = item.thumbStyle.background;
   }
   el.appendChild(ph);
 }
@@ -242,6 +292,7 @@ function renderGrid(list) {
     check.textContent = "✓";
     card.appendChild(check);
     const thumbWrap = document.createElement("div");
+    thumbWrap.className = "thumb-wrap";
     renderThumb(thumbWrap, item);
     card.appendChild(thumbWrap);
     if (item.score != null) {
@@ -298,13 +349,17 @@ function renderChips() {
     if (s === 0) continue;
     const chip = document.createElement("span");
     chip.className = `chip ${s === 1 ? "include" : "exclude"}`;
-    chip.innerHTML = `${s === 2 ? "−" : ""}${tag} <button type="button" class="x">×</button>`;
-    chip.querySelector(".x").addEventListener("click", () => {
-      state.tagStates[tag] = 0;
-      syncQueryFromTags();
-      commitQueryToOrigin();
-      render();
+    chip.append(document.createTextNode(s === 2 ? `−${tag} ` : `${tag} `));
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "x";
+    btn.textContent = "×";
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      removeTagFilter(tag);
     });
+    chip.append(btn);
     els.chipRow.appendChild(chip);
   }
   els.queryNote.classList.toggle("visible", /similar_to:/.test(state.query));
@@ -584,7 +639,8 @@ function renderDetail(list) {
       Object.assign(ph.style, item.thumbStyle || { minHeight: "240px" });
       els.detailImage.appendChild(ph);
     }
-    els.detailTags.innerHTML = (item.tags || []).map((t) => `<span class="chip neutral">${t}</span>`).join("");
+    els.detailTags.innerHTML = "";
+    renderDetailTags(item.tags || []);
     els.detailMeta.innerHTML = `
       <dt>ID</dt><dd>${item.image_id}</dd>
       <dt>ファイル</dt><dd>${item.file_name}</dd>
@@ -724,19 +780,11 @@ function debouncedRender() {
 }
 
 function bindEvents() {
-  els.queryInput.addEventListener("change", () => {
-    state.query = els.queryInput.value;
-    parseQueryTags(state.query);
-    commitQueryToOrigin();
-    debouncedRender();
-  });
+  els.queryInput.addEventListener("input", applyQueryInput);
+  els.queryInput.addEventListener("search", applyQueryInput);
+  els.queryInput.addEventListener("change", applyQueryInput);
   els.queryInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      state.query = els.queryInput.value;
-      parseQueryTags(state.query);
-      commitQueryToOrigin();
-      debouncedRender();
-    }
+    if (e.key === "Enter") applyQueryInput();
   });
 
   $$(".route-tabs button").forEach((btn) => {
