@@ -12,6 +12,8 @@ data/
 data/phase0/*
 !data/phase0/README.md
 
+docs/tag-quality-review.md
+
 # Python
 __pycache__/
 *.py[cod]
