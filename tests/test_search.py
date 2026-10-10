@@ -10,7 +10,7 @@ from PIL import Image
 
 from siftivex.db import init_db, migrate_phase1
 from siftivex.ingest import ingest_file
-from siftivex.search import parse_query, search_by_tags
+from siftivex.search import merge_parsed_query, parse_query, search_by_tags
 from siftivex.tags_db import replace_tags
 
 
@@ -36,6 +36,31 @@ def test_parse_query_tags_and_text():
     assert q.include_tags == ["制服"]
     assert q.exclude_tags == ["未分類"]
     assert q.text == "青い髪"
+
+
+def test_parse_query_quoted_tagger_tags():
+    q = parse_query('tag:"black hair" -tag:\'photo (medium)\' 青い髪')
+    assert q.include_tags == ["black hair"]
+    assert q.exclude_tags == ["photo (medium)"]
+    assert q.text == "青い髪"
+
+
+def test_merge_parsed_query_extra_include():
+    base = parse_query("tag:1girl")
+    merged = merge_parsed_query(base, extra_include=["bare legs", "1girl"])
+    assert merged.include_tags == ["1girl", "bare legs"]
+    assert merged.text == ""
+
+
+def test_search_by_quoted_tagger_tag(db_conn: sqlite3.Connection, tmp_path: Path):
+    path = tmp_path / "a.png"
+    write_png(path, (1, 0, 0))
+    ing = ingest_file(path, db_conn, route_tag="route/a", skip_ocr=True)
+    replace_tags(db_conn, ing.image_id, "auto_tagger", ["black hair", "1girl"])
+    db_conn.commit()
+    result = search_by_tags(db_conn, parse_query('tag:"black hair"'), route_tag="route/a")
+    assert result.total == 1
+    assert result.items[0].image_id == ing.image_id
 
 
 def test_search_by_tags_and_route(db_conn: sqlite3.Connection, tmp_path: Path):

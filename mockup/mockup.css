@@ -1151,16 +1151,63 @@ a {
   margin: 0 4px 4px 0;
 }
 
+.tag-source-block {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  background: var(--bg-elevated);
+}
+
 .tag-source-block + .tag-source-block {
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .tag-source-label {
   font-size: 11px;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--muted, #888);
-  margin-bottom: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.tag-source-block summary::-webkit-details-marker {
+  display: none;
+}
+
+.tag-source-label::before {
+  content: "▸ ";
+  display: inline-block;
+  transition: transform 0.12s;
+}
+
+.tag-source-block[open] .tag-source-label::before {
+  transform: rotate(90deg);
+}
+
+.chip-en {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.chip-ns {
+  color: #a8c7ff;
+}
+
+.chip-ja {
+  color: #c8e6c9;
+}
+
+.chip-legacy {
+  opacity: 0.65;
+}
+
+.api-tag-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+  padding: 8px 4px;
 }
 
 .tag-editor-sub {

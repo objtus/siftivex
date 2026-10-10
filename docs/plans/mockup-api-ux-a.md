@@ -1,0 +1,25 @@
+# Mockup 検索 UX 改善（案 A · 2026-10）
+
+実 API モード向けの最小変更。React 本番前の **under.iphone 試用**用。
+
+## 変更内容
+
+| 項目 | 内容 |
+|---|---|
+| 検索 | サーバ側 `q` のみ（二重フィルタ削除）· limit **200** · 件数 **表示/総数** |
+| クエリ | API 時 `tagStates` をクエリから再構築（ダミー TAGS と非連動） |
+| サイドタグ一覧 | API 時は説明文のみ（ダミー語彙を出さない） |
+| 詳細タグ | source ごと `<details>` · EN/JA/NS の chip 色分け · 空ブロック非表示 |
+| 再タグ | **非表示**（VLM legacy） |
+| API 失敗 | チェックを外さずエラー表示 |
+
+## 試すクエリ（under）
+
+- `tag:1girl`
+- `tag:種類/写真`
+- `tag:制服`
+- `tag:1girl tag:画角/全身`
+
+## 次（C）
+
+[scripts/run_pixiv_tagging.sh](../../scripts/run_pixiv_tagging.sh) → tagger 完了後 `d1_batch --route route/pixiv`

@@ -9,7 +9,11 @@ from dataclasses import dataclass, field
 from siftivex.embeddings import Embedder, EmbeddingStore
 from siftivex.tags_db import effective_tags
 
-TAG_TOKEN = re.compile(r"^-?tag:(.+)$", re.IGNORECASE)
+# Unquoted value is \S+ only; use tag:"black hair" for spaced Danbooru-style tags.
+TAG_PATTERN = re.compile(
+    r'(-?)tag:(?:"((?:\\.|[^"\\])*)"|\'((?:\\.|[^\'\\])*)\'|(\S+))',
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -36,22 +40,50 @@ class SearchResult:
     parsed: ParsedQuery
 
 
+def _unescape_quoted_tag(tag: str) -> str:
+    return tag.replace('\\"', '"').replace("\\'", "'").strip()
+
+
+def merge_parsed_query(
+    parsed: ParsedQuery,
+    *,
+    extra_include: list[str] | None = None,
+    extra_exclude: list[str] | None = None,
+) -> ParsedQuery:
+    """Combine tag: tokens in q with explicit include_tag / exclude_tag query params."""
+    include = list(parsed.include_tags)
+    exclude = list(parsed.exclude_tags)
+    seen_inc = set(include)
+    seen_exc = set(exclude)
+    for raw_tag in extra_include or []:
+        tag = raw_tag.strip()
+        if tag and tag not in seen_inc:
+            seen_inc.add(tag)
+            include.append(tag)
+    for raw_tag in extra_exclude or []:
+        tag = raw_tag.strip()
+        if tag and tag not in seen_exc:
+            seen_exc.add(tag)
+            exclude.append(tag)
+    return ParsedQuery(include_tags=include, exclude_tags=exclude, text=parsed.text)
+
+
 def parse_query(raw: str) -> ParsedQuery:
     parsed = ParsedQuery()
     text_parts: list[str] = []
-    for token in raw.split():
-        m = TAG_TOKEN.match(token)
-        if not m:
-            text_parts.append(token)
-            continue
-        tag = m.group(1).strip()
+    last = 0
+    for m in TAG_PATTERN.finditer(raw):
+        text_parts.append(raw[last : m.start()])
+        last = m.end()
+        tag = _unescape_quoted_tag(m.group(2) or m.group(3) or m.group(4) or "")
         if not tag:
             continue
-        if token.startswith("-tag:") or token.startswith("-TAG:"):
+        if m.group(1) == "-":
             parsed.exclude_tags.append(tag)
         else:
             parsed.include_tags.append(tag)
-    parsed.text = " ".join(text_parts).strip()
+    text_parts.append(raw[last:])
+    parsed.text = " ".join("".join(text_parts).split())
     return parsed
 
 
@@ -204,8 +236,14 @@ def search_images(
     offset: int = 0,
     store: EmbeddingStore | None = None,
     embedder: Embedder | None = None,
+    extra_include_tags: list[str] | None = None,
+    extra_exclude_tags: list[str] | None = None,
 ) -> SearchResult:
-    parsed = parse_query(query)
+    parsed = merge_parsed_query(
+        parse_query(query),
+        extra_include=extra_include_tags,
+        extra_exclude=extra_exclude_tags,
+    )
     if parsed.text and store is not None and embedder is not None:
         return search_semantic(
             conn,

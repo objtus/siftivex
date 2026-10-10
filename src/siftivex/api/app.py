@@ -48,6 +48,11 @@ def health() -> dict[str, str]:
 @app.get("/api/images")
 def list_images(
     q: str = Query("", description="tag:foo -tag:bar or natural language"),
+    include_tag: list[str] = Query(
+        default=[],
+        description="Repeat for each include tag (spaces OK, e.g. bare legs)",
+    ),
+    exclude_tag: list[str] = Query(default=[], description="Repeat for each exclude tag"),
     route_tag: str | None = Query(None),
     limit: int = Query(60, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -62,6 +67,8 @@ def list_images(
             offset=offset,
             store=_embedding_store(),
             embedder=_embedder(),
+            extra_include_tags=include_tag,
+            extra_exclude_tags=exclude_tag,
         )
         return {
             "total": parsed.total,

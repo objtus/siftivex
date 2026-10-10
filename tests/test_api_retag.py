@@ -65,3 +65,26 @@ def test_retag_image_endpoint_updates_tags(api_client: TestClient, tmp_path: Pat
 def test_retag_image_endpoint_not_found(api_client: TestClient):
     res = api_client.post("/api/images/img_missing/retag")
     assert res.status_code == 404
+
+
+def test_list_images_include_tag_with_spaces(api_client: TestClient, tmp_path: Path):
+    img = tmp_path / "a.png"
+    Image.new("RGB", (4, 4), (1, 2, 3)).save(img)
+    db = api_app_module.DEFAULT_DB_PATH
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    ing = ingest_file(img, conn, route_tag="route/a", skip_ocr=True)
+    from siftivex.tags_db import replace_auto_tagger_tags
+
+    replace_auto_tagger_tags(conn, ing.image_id, ["bare legs", "1girl"])
+    conn.commit()
+    conn.close()
+
+    res = api_client.get(
+        "/api/images",
+        params={"include_tag": "bare legs", "route_tag": "route/a", "limit": 10},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total"] == 1
+    assert data["query"]["include_tags"] == ["bare legs"]

@@ -23,6 +23,8 @@ const state = {
   originIndex: 0,
   savedScrollTop: 0,
   retagBusy: false,
+  apiTotal: null,
+  apiLoadError: null,
 };
 
 const els = {};
@@ -50,19 +52,34 @@ function cycleTag(tag) {
   render();
 }
 
-function queryTextOnly(q) {
+function tagNeedsQuotes(tag) {
+  return /[\s()"']/.test(tag);
+}
+
+function formatTagQueryToken(tag, exclude) {
+  const prefix = exclude ? "-tag:" : "tag:";
+  if (!tagNeedsQuotes(tag)) return `${prefix}${tag}`;
+  const escaped = tag.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return `${prefix}"${escaped}"`;
+}
+
+function stripTagTokensFromQuery(q) {
   return q
-    .replace(/-?tag:[^\s]+/g, "")
+    .replace(/(-?)tag:(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s]+)/gi, "")
     .replace(/similar_to:\S+/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
+function queryTextOnly(q) {
+  return stripTagTokensFromQuery(q);
+}
+
 function syncQueryFromTags() {
   const parts = [];
   for (const [tag, s] of Object.entries(state.tagStates)) {
-    if (s === 1) parts.push(`tag:${tag}`);
-    if (s === 2) parts.push(`-tag:${tag}`);
+    if (s === 1) parts.push(formatTagQueryToken(tag, false));
+    if (s === 2) parts.push(formatTagQueryToken(tag, true));
   }
   const text = queryTextOnly(state.query);
   state.query = [...parts, text].filter(Boolean).join(" ").trim();
@@ -84,12 +101,16 @@ async function refreshList() {
 }
 
 function parseQueryTags(q) {
-  state.tagStates = Object.fromEntries(TAGS.map((t) => [t, 0]));
-  const re = /(-?)tag:([^\s]+)/g;
+  state.tagStates = state.useApi
+    ? {}
+    : Object.fromEntries(TAGS.map((t) => [t, 0]));
+  const re = /(-?)tag:(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([^\s]+))/gi;
   let m;
   while ((m = re.exec(q)) !== null) {
     const excl = m[1] === "-";
-    const tag = m[2];
+    let tag = m[2] ?? m[3] ?? m[4] ?? "";
+    tag = tag.replace(/\\"/g, '"').replace(/\\'/g, "'");
+    if (!tag) continue;
     state.tagStates[tag] = excl ? 2 : 1;
   }
   state.query = q;
@@ -118,7 +139,7 @@ function filterByTagFromDetail(tag) {
 
 function syncRetagButton() {
   if (!els.btnRetag) return;
-  const show = state.useApi && !!state.activeId;
+  const show = false;
   els.btnRetag.hidden = !show;
   els.btnRetag.disabled = !show || state.retagBusy;
   els.btnRetag.textContent = state.retagBusy ? "再タグ中…" : "再タグ";
@@ -191,42 +212,39 @@ function renderDetailTags(item) {
   els.detailTags.innerHTML = "";
   const sources = item?.tag_sources;
   if (sources && state.useApi) {
-    appendTagSourceBlock(els.detailTags, "ファイル名", sources.filename);
-    appendTagSourceBlock(els.detailTags, "Tagger (EN)", sources.auto_tagger);
-    appendTagSourceBlock(els.detailTags, "d1 namespace", sources.auto_d1);
-    if (sources.inferred_ja?.length) {
-      appendTagSourceBlock(els.detailTags, "推定 JA", sources.inferred_ja);
-    }
-    if (sources.auto?.length) {
-      appendTagSourceBlock(els.detailTags, "VLM (legacy)", sources.auto);
-    }
-    if (sources.manual_added?.length) {
-      appendTagSourceBlock(els.detailTags, "手動", sources.manual_added);
-    }
+    appendTagSourceBlock(els.detailTags, "ファイル名 (JA)", sources.filename, { chipClass: "chip-ja" });
+    appendTagSourceBlock(els.detailTags, "Tagger (EN)", sources.auto_tagger, { chipClass: "chip-en" });
+    appendTagSourceBlock(els.detailTags, "d1 namespace", sources.auto_d1, { chipClass: "chip-ns" });
+    appendTagSourceBlock(els.detailTags, "推定 JA", sources.inferred_ja, { chipClass: "chip-ja" });
+    appendTagSourceBlock(els.detailTags, "VLM (legacy)", sources.auto, { chipClass: "chip-legacy" });
+    appendTagSourceBlock(els.detailTags, "手動", sources.manual_added, { chipClass: "chip-manual" });
     return;
   }
   appendTagChips(els.detailTags, item?.tags || []);
 }
 
-function appendTagSourceBlock(container, label, tags) {
-  const block = document.createElement("div");
+function appendTagSourceBlock(container, label, tags, opts = {}) {
+  const list = tags || [];
+  if (!list.length) return;
+  const block = document.createElement("details");
   block.className = "tag-source-block";
-  const head = document.createElement("div");
+  block.open = opts.open !== false;
+  const head = document.createElement("summary");
   head.className = "tag-source-label";
-  head.textContent = `${label} (${(tags || []).length})`;
+  head.textContent = `${label} (${list.length})`;
   block.appendChild(head);
   const row = document.createElement("div");
   row.className = "tag-editor tag-editor-sub";
-  appendTagChips(row, tags || []);
+  appendTagChips(row, list, opts.chipClass);
   block.appendChild(row);
   container.appendChild(block);
 }
 
-function appendTagChips(container, tags) {
+function appendTagChips(container, tags, extraClass = "") {
   for (const t of tags || []) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "chip neutral tag-filter";
+    btn.className = `chip neutral tag-filter ${extraClass}`.trim();
     if (state.tagStates[t] === 1) btn.classList.add("include");
     if (state.tagStates[t] === 2) btn.classList.add("exclude");
     btn.textContent = t;
@@ -242,9 +260,27 @@ function ocrExcerpt(item) {
   return t.length > 40 ? `${t.slice(0, 40)}…` : t;
 }
 
+function listTagsPreview(item, max = 5) {
+  const tags = item?.tags || [];
+  if (!tags.length) return "—";
+  const head = tags.slice(0, max);
+  const rest = tags.length - head.length;
+  return rest > 0 ? `${head.join(", ")} +${rest}` : head.join(", ");
+}
+
 function filteredImages() {
   const src = state.useApi && state.apiImages ? state.apiImages : IMAGES;
   let list = [...src];
+
+  if (state.useApi) {
+    list.sort((a, b) => {
+      if (state.sort === "score") return (b.score ?? 0) - (a.score ?? 0);
+      if (state.sort === "tags") return (b.tags?.length ?? 0) - (a.tags?.length ?? 0);
+      return a.file_name.localeCompare(b.file_name);
+    });
+    return list;
+  }
+
   if (state.route !== "all") list = list.filter((i) => i.route_tag === state.route);
 
   const sim = state.query.match(/similar_to:(\S+)/);
@@ -424,7 +460,7 @@ function renderTable(list) {
     tr.innerHTML = `
       <td class="col-thumb"><div class="table-thumb-cell"></div></td>
       <td class="col-filename">${item.file_name}</td>
-      <td class="col-tags">${item.tags.slice(0, 5).join(", ")}</td>
+      <td class="col-tags" title="${(item.tags || []).join(", ")}">${listTagsPreview(item)}</td>
       <td class="col-ocr">${ocrExcerpt(item)}</td>
       <td class="col-score">${item.score?.toFixed(3) ?? "—"}</td>
     `;
@@ -437,6 +473,14 @@ function renderTable(list) {
 function renderTagList() {
   const filter = els.tagFilter.value.toLowerCase();
   els.tagList.innerHTML = "";
+  if (state.useApi) {
+    const hint = document.createElement("p");
+    hint.className = "api-tag-hint";
+    hint.textContent =
+      "API モード: tag:名前（空白・括弧ありは tag:\"black hair\"）。詳細チップは自動で引用。";
+    els.tagList.appendChild(hint);
+    return;
+  }
   for (const tag of TAGS) {
     if (filter && !tag.toLowerCase().includes(filter)) continue;
     const s = state.tagStates[tag];
@@ -472,7 +516,15 @@ function renderChips() {
     chip.append(btn);
     els.chipRow.appendChild(chip);
   }
-  els.queryNote.classList.toggle("visible", /similar_to:/.test(state.query));
+  const showNote =
+    /similar_to:/.test(state.query) ||
+    (state.useApi && Object.values(state.tagStates).some((s) => s !== 0));
+  els.queryNote.classList.toggle("visible", showNote);
+  if (state.useApi) {
+    els.queryNote.textContent = state.apiLoadError
+      ? `⚠ API: ${state.apiLoadError}`
+      : "API: フィルタはサーバ検索。チップはクエリと同期（Enter で再検索）。";
+  }
 }
 
 function enterViewMode() {
@@ -925,7 +977,14 @@ function applyLayoutVars() {
 
 function render() {
   const list = filteredImages();
-  els.resultCount.textContent = `${list.length.toLocaleString()} 件`;
+  if (state.useApi && state.apiTotal != null) {
+    const shown = list.length.toLocaleString();
+    const total = state.apiTotal.toLocaleString();
+    els.resultCount.textContent =
+      state.apiTotal > list.length ? `${shown} / ${total} 件` : `${total} 件`;
+  } else {
+    els.resultCount.textContent = `${list.length.toLocaleString()} 件`;
+  }
   renderBreadcrumb();
   renderChips();
   renderTagList();
@@ -953,12 +1012,20 @@ function render() {
 
 async function tryLoadApi() {
   if (!state.useApi) return;
+  state.apiLoadError = null;
   try {
-    const params = new URLSearchParams({ limit: "80", q: state.query.replace(/similar_to:\S+/g, "").trim() });
+    const params = new URLSearchParams({ limit: "200" });
+    const qText = queryTextOnly(state.query.replace(/similar_to:\S+/g, "").trim());
+    params.set("q", qText);
+    for (const [tag, s] of Object.entries(state.tagStates)) {
+      if (s === 1) params.append("include_tag", tag);
+      if (s === 2) params.append("exclude_tag", tag);
+    }
     if (state.route !== "all") params.set("route_tag", state.route);
     const res = await fetch(`/api/images?${params}`);
-    if (!res.ok) throw new Error(res.statusText);
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     const data = await res.json();
+    state.apiTotal = data.total ?? data.items?.length ?? 0;
     state.apiImages = data.items.map((item) => ({
       ...item,
       thumb_url: `/api/images/${item.image_id}/thumbnail`,
@@ -966,10 +1033,10 @@ async function tryLoadApi() {
       ocr_text: "",
     }));
   } catch (err) {
-    console.warn("API fallback:", err);
-    state.apiImages = null;
-    state.useApi = false;
-    $("#lab-api").checked = false;
+    console.warn("API load failed:", err);
+    state.apiLoadError = err.message || String(err);
+    state.apiImages = [];
+    state.apiTotal = 0;
   }
 }
 
@@ -1073,6 +1140,7 @@ function bindEvents() {
   });
   $("#lab-api").addEventListener("change", async (e) => {
     state.useApi = e.target.checked;
+    parseQueryTags(state.query);
     await tryLoadApi();
     render();
   });
