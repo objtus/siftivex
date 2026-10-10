@@ -23,15 +23,28 @@ class MockupHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:
         if self.path.startswith("/api/"):
-            self._proxy()
+            self._proxy("GET")
             return
         super().do_GET()
 
-    def _proxy(self) -> None:
+    def do_POST(self) -> None:
+        if self.path.startswith("/api/"):
+            self._proxy("POST")
+            return
+        self.send_error(405, "Method Not Allowed")
+
+    def _proxy(self, method: str = "GET") -> None:
         url = f"{self.api_base}{self.path}"
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length) if length else None
+        req = urllib.request.Request(url, data=body, method=method)
+        for key, value in self.headers.items():
+            if key.lower() in ("host", "content-length"):
+                continue
+            req.add_header(key, value)
         try:
-            with urllib.request.urlopen(url, timeout=120) as resp:
-                body = resp.read()
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                resp_body = resp.read()
                 self.send_response(resp.status)
                 skip = {"transfer-encoding", "connection", "content-encoding"}
                 for key, value in resp.headers.items():
@@ -39,14 +52,14 @@ class MockupHandler(SimpleHTTPRequestHandler):
                         self.send_header(key, value)
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
-                self.wfile.write(body)
+                self.wfile.write(resp_body)
         except urllib.error.HTTPError as exc:
-            body = exc.read()
+            err_body = exc.read()
             self.send_response(exc.code)
             self.send_header("Content-Type", exc.headers.get("Content-Type", "text/plain"))
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            self.wfile.write(body)
+            self.wfile.write(err_body)
         except OSError as exc:
             self.send_error(502, f"API unreachable ({self.api_base}): {exc}")
 

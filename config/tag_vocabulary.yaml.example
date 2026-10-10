@@ -17,6 +17,8 @@ exclude_flat_tags:
 tag_notes:
   2D: flat_tags に付けない。2D作品は 種類/（イラスト・漫画コマ等）で表現。
   修正: 画像の加工・編集全般（フィルタ、レタッチ、色調整、トリミング等）。
+  順光: flat 不可 → 光の方向/ 順光。
+  逆光: flat 不可 → 光の方向/ 逆光。
 
 manual_flat_tags:
   - 風景

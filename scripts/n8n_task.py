@@ -99,6 +99,38 @@ def run_embed(limit: int, route: str | None) -> int:
     return proc.returncode
 
 
+def run_d1(limit: int, route: str | None) -> int:
+    cmd = [str(ROOT / ".venv" / "bin" / "python"), "scripts/d1_batch.py"]
+    if route:
+        cmd.extend(["--route", route])
+    if limit > 0:
+        cmd.extend(["--limit", str(limit)])
+    log_path = _log_path("d1")
+    with log_path.open("a", encoding="utf-8") as log:
+        log.write(f"\n=== d1 limit={limit} route={route or 'all'} ===\n")
+        log.flush()
+        proc = subprocess.run(cmd, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
+    print(f"d1 exit={proc.returncode} log={log_path}")
+    _append_log(log_path, f"d1 exit={proc.returncode}")
+    return proc.returncode
+
+
+def run_tagger(limit: int, route: str | None) -> int:
+    cmd = [str(ROOT / ".venv" / "bin" / "python"), "scripts/tagger_batch.py"]
+    if route:
+        cmd.extend(["--route", route])
+    if limit > 0:
+        cmd.extend(["--limit", str(limit)])
+    log_path = _log_path("tagger")
+    with log_path.open("a", encoding="utf-8") as log:
+        log.write(f"\n=== tagger limit={limit} route={route or 'all'} ===\n")
+        log.flush()
+        proc = subprocess.run(cmd, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
+    print(f"tagger exit={proc.returncode} log={log_path}")
+    _append_log(log_path, f"tagger exit={proc.returncode}")
+    return proc.returncode
+
+
 def run_vlm(limit: int, route: str | None) -> int:
     conn = get_connection(DEFAULT_DB_PATH)
     client = VlmClient()
@@ -140,6 +172,9 @@ def run_mark_missing() -> int:
 
 
 def run_status() -> int:
+    from siftivex.tag_stack_migrate import apply_tag_stack_migrations
+
+    apply_tag_stack_migrations(DEFAULT_DB_PATH)
     conn = get_connection(DEFAULT_DB_PATH)
     try:
         total = conn.execute("SELECT COUNT(*) FROM images WHERE status='active'").fetchone()[0]
@@ -152,6 +187,15 @@ def run_status() -> int:
         vlm_pending = conn.execute(
             "SELECT COUNT(*) FROM index_jobs WHERE job_type='vlm_tag' AND status='pending'"
         ).fetchone()[0]
+        tagger_pending = conn.execute(
+            "SELECT COUNT(*) FROM index_jobs WHERE job_type='tagger_tag' AND status='pending'"
+        ).fetchone()[0]
+        auto_tagger_images = conn.execute(
+            "SELECT COUNT(DISTINCT image_id) FROM image_tags WHERE source='auto_tagger'"
+        ).fetchone()[0]
+        auto_d1_images = conn.execute(
+            "SELECT COUNT(DISTINCT image_id) FROM image_tags WHERE source='auto_d1'"
+        ).fetchone()[0]
         missing = conn.execute("SELECT COUNT(*) FROM images WHERE status='missing'").fetchone()[0]
     finally:
         conn.close()
@@ -161,6 +205,9 @@ def run_status() -> int:
         "embedded": embedded,
         "embed_pending": embed_pending,
         "vlm_pending": vlm_pending,
+        "tagger_pending": tagger_pending,
+        "auto_tagger_images": auto_tagger_images,
+        "auto_d1_images": auto_d1_images,
         "missing": missing,
     }
     print(json.dumps(payload, ensure_ascii=False))
@@ -186,7 +233,15 @@ def main() -> int:
     p_embed.add_argument("--limit", type=int, default=200)
     p_embed.add_argument("--route", default=None)
 
-    p_vlm = sub.add_parser("vlm", help="Process VLM queue")
+    p_d1 = sub.add_parser("d1", help="Run d1 namespace batch (auto_d1)")
+    p_d1.add_argument("--limit", type=int, default=50)
+    p_d1.add_argument("--route", default=None)
+
+    p_tagger = sub.add_parser("tagger", help="Run cl_tagger batch (auto_tagger)")
+    p_tagger.add_argument("--limit", type=int, default=200)
+    p_tagger.add_argument("--route", default=None)
+
+    p_vlm = sub.add_parser("vlm", help="Process VLM queue (legacy)")
     p_vlm.add_argument("--limit", type=int, default=5)
     p_vlm.add_argument("--route", default=None)
 
@@ -203,6 +258,10 @@ def main() -> int:
                 return run_ingest(archives, args.limit, skip_ocr=not args.ocr)
             if args.task == "embed":
                 return run_embed(args.limit, args.route)
+            if args.task == "d1":
+                return run_d1(args.limit, args.route)
+            if args.task == "tagger":
+                return run_tagger(args.limit, args.route)
             if args.task == "vlm":
                 return run_vlm(args.limit, args.route)
             if args.task == "mark-missing":

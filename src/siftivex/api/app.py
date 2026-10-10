@@ -8,10 +8,13 @@ from fastapi.responses import FileResponse
 
 from siftivex.db import get_connection
 from siftivex.embeddings import Embedder, EmbeddingStore
+from siftivex.jobs import retag_image
 from siftivex.paths import DEFAULT_DB_PATH, DEFAULT_LANCE_PATH, DEFAULT_THUMBNAILS_DIR
 from siftivex.search import image_to_dict, search_images
-from siftivex.tags_db import effective_tags
+from siftivex.tag_vocabulary import PROMPT_REVISION
+from siftivex.tags_db import effective_tags, tags_grouped_by_source
 from siftivex.thumbnails import ThumbnailPaths, thumbnail_dir
+from siftivex.vlm import VlmClient
 from siftivex.works import get_work_pages, image_metadata_for_image, validate_work_id, work_context_for_image
 
 app = FastAPI(title="Siftivex", version="0.2.0")
@@ -27,6 +30,11 @@ def _embedding_store() -> EmbeddingStore:
     return EmbeddingStore(DEFAULT_LANCE_PATH)
 
 
+def _vlm_client() -> VlmClient:
+    """New client each call so config/vlm.yaml changes apply without API restart."""
+    return VlmClient()
+
+
 def _thumb_paths(image_id: str) -> ThumbnailPaths:
     base = thumbnail_dir(image_id, DEFAULT_THUMBNAILS_DIR)
     return ThumbnailPaths(thumb=base / "thumb.webp", preview=base / "preview.webp")
@@ -34,7 +42,7 @@ def _thumb_paths(image_id: str) -> ThumbnailPaths:
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", "prompt_revision": PROMPT_REVISION}
 
 
 @app.get("/api/images")
@@ -89,6 +97,7 @@ def get_image(image_id: str) -> dict:
         if row is None:
             raise HTTPException(status_code=404, detail="image not found")
         tags = effective_tags(conn, image_id)
+        tag_sources = tags_grouped_by_source(conn, image_id)
         ocr = conn.execute(
             "SELECT COALESCE(manual_ocr, auto_ocr, '') AS text FROM image_ocr WHERE image_id = ?",
             (image_id,),
@@ -108,11 +117,65 @@ def get_image(image_id: str) -> dict:
         "vlm_caption": row["vlm_caption"],
         "status": row["status"],
         "tags": tags,
+        "tag_sources": {
+            "auto": tag_sources["auto"],
+            "filename": tag_sources["filename"],
+            "auto_tagger": tag_sources["auto_tagger"],
+            "auto_d1": tag_sources["auto_d1"],
+            "inferred_ja": tag_sources["inferred_ja"],
+            "manual_added": tag_sources["manual_added"],
+        },
+        "prompt_revision": PROMPT_REVISION,
         "ocr_text": ocr["text"] if ocr else "",
         "has_thumbnail": thumbs.thumb.is_file(),
         "has_preview": thumbs.preview.is_file(),
         "metadata": metadata,
         "work": work,
+    }
+
+
+@app.post("/api/images/{image_id}/retag")
+def retag_image_endpoint(image_id: str) -> dict:
+    """Re-run VLM tagging for one image (overwrites auto tags and vlm_caption)."""
+    conn = get_connection(DEFAULT_DB_PATH)
+    try:
+        outcome = retag_image(conn, image_id, _vlm_client())
+        if not outcome.ok:
+            code = 404 if outcome.error == "image not found" else 400
+            raise HTTPException(status_code=code, detail=outcome.error or "retag failed")
+        conn.commit()
+        row = conn.execute(
+            "SELECT file_name, route_tag, vlm_caption FROM images WHERE image_id = ?",
+            (image_id,),
+        ).fetchone()
+        tags = effective_tags(conn, image_id)
+        tag_sources = tags_grouped_by_source(conn, image_id)
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as exc:
+        conn.rollback()
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    finally:
+        conn.close()
+
+    return {
+        "image_id": image_id,
+        "file_name": row["file_name"],
+        "route_tag": row["route_tag"],
+        "vlm_caption": row["vlm_caption"],
+        "tags": tags,
+        "tag_sources": {
+            "auto": tag_sources["auto"],
+            "filename": tag_sources["filename"],
+            "auto_tagger": tag_sources["auto_tagger"],
+            "auto_d1": tag_sources["auto_d1"],
+            "inferred_ja": tag_sources["inferred_ja"],
+            "manual_added": tag_sources["manual_added"],
+        },
+        "thinking_enabled": outcome.thinking_enabled,
+        "reasoning_chars": outcome.reasoning_chars,
+        "prompt_revision": PROMPT_REVISION,
     }
 
 

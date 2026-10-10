@@ -39,7 +39,7 @@ class IngestResult:
     embedded: bool
     route_tag: str | None
     metadata_written: bool
-    vlm_queued: bool
+    tagger_queued: bool
     thumbnails_created: bool
     ocr_done: bool
     ocr_queued: bool
@@ -207,6 +207,10 @@ def queue_vlm_job(conn: sqlite3.Connection, image_id: str) -> bool:
     return queue_index_job(conn, image_id, "vlm_tag")
 
 
+def queue_tagger_job(conn: sqlite3.Connection, image_id: str) -> bool:
+    return queue_index_job(conn, image_id, "tagger_tag")
+
+
 def queue_ocr_job(conn: sqlite3.Connection, image_id: str) -> bool:
     return queue_index_job(conn, image_id, "ocr")
 
@@ -307,9 +311,9 @@ def ingest_file(
             upsert_image_search(conn, image_id)
             search_indexed = True
 
-    vlm_queued = False
+    tagger_queued = False
     if is_new:
-        vlm_queued = queue_vlm_job(conn, image_id)
+        tagger_queued = queue_tagger_job(conn, image_id)
 
     return IngestResult(
         image_id=image_id,
@@ -318,7 +322,7 @@ def ingest_file(
         embedded=embedded,
         route_tag=resolved_route,
         metadata_written=metadata_written,
-        vlm_queued=vlm_queued,
+        tagger_queued=tagger_queued,
         thumbnails_created=thumbnails_created,
         ocr_done=ocr_done,
         ocr_queued=ocr_queued,

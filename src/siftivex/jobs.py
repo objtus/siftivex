@@ -13,7 +13,6 @@ from siftivex.search_index import upsert_image_search
 from siftivex.tags_db import (
     RETRY_TAG,
     apply_filename_tags,
-    effective_tags,
     mark_image_missing,
     mark_vlm_retry_needed,
     replace_vlm_tags,
@@ -38,6 +37,15 @@ class JobResult:
     job_type: str
     ok: bool
     error: str | None = None
+
+
+@dataclass(frozen=True)
+class RetagResult:
+    image_id: str
+    ok: bool
+    error: str | None = None
+    reasoning_chars: int = 0
+    thinking_enabled: bool = False
 
 
 def fetch_pending_jobs(
@@ -171,36 +179,48 @@ def process_ocr_job(
     return JobResult(job.job_id, job.image_id, job.job_type, ok=True)
 
 
-def process_vlm_job(conn: sqlite3.Connection, job: JobRow, client: VlmClient) -> JobResult:
+def retag_image(conn: sqlite3.Connection, image_id: str, client: VlmClient) -> RetagResult:
+    """Run VLM tagging for one image; overwrite auto tags and caption."""
     row = conn.execute(
         "SELECT source_path, file_name FROM images WHERE image_id = ? AND status = 'active'",
-        (job.image_id,),
+        (image_id,),
     ).fetchone()
     if not row:
-        return JobResult(job.job_id, job.image_id, job.job_type, ok=False, error="image not found")
+        return RetagResult(image_id, ok=False, error="image not found")
 
     path = Path(row[0])
     filename = row[1]
     if not is_readable_image(path):
-        mark_image_missing(conn, job.image_id)
-        return JobResult(job.job_id, job.image_id, job.job_type, ok=False, error="missing image")
+        mark_image_missing(conn, image_id)
+        return RetagResult(image_id, ok=False, error="missing image")
 
-    filename_tags = apply_filename_tags(conn, job.image_id, filename)
+    filename_tags = apply_filename_tags(conn, image_id, filename)
     result = client.tag_image(path, priority_tags=filename_tags)
-    replace_vlm_tags(conn, job.image_id, result.namespace_tags, result.flat_tags)
+    replace_vlm_tags(conn, image_id, result.namespace_tags, result.flat_tags)
     conn.execute(
         "UPDATE images SET vlm_caption = ?, updated_at = datetime('now') WHERE image_id = ?",
-        (result.caption, job.image_id),
+        (result.caption, image_id),
     )
     if not result.namespace_tags and not result.flat_tags:
         conn.execute(
             "INSERT OR IGNORE INTO image_tags (image_id, tag, source) VALUES (?, ?, 'auto')",
-            (job.image_id, "未分類"),
+            (image_id, "未分類"),
         )
-    merge_vlm_ocr(conn, job.image_id, result.ocr_text)
-    upsert_image_search(conn, job.image_id)
-    _ = effective_tags(conn, job.image_id)
-    return JobResult(job.job_id, job.image_id, job.job_type, ok=True)
+    merge_vlm_ocr(conn, image_id, result.ocr_text)
+    upsert_image_search(conn, image_id)
+    return RetagResult(
+        image_id,
+        ok=True,
+        reasoning_chars=len(result.reasoning_content),
+        thinking_enabled=bool(client.config.get("enable_thinking", False)),
+    )
+
+
+def process_vlm_job(conn: sqlite3.Connection, job: JobRow, client: VlmClient) -> JobResult:
+    outcome = retag_image(conn, job.image_id, client)
+    if outcome.ok:
+        return JobResult(job.job_id, job.image_id, job.job_type, ok=True)
+    return JobResult(job.job_id, job.image_id, job.job_type, ok=False, error=outcome.error)
 
 
 def run_jobs(

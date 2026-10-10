@@ -6,10 +6,11 @@
 
 | 項目 | 状態 |
 |---|---|
-| フェーズ | **Phase 1 クローズ** → Phase 2 着手可 |
+| フェーズ | Phase 1 完了 · Phase 2 部分 · **次: 索引 v2（M0→M1）** |
 | DB | 40,320 images / 40,305 embedded / LanceDB 40,505 |
-| 自動化 | cron（ingest / embed / vlm / missing） |
-| 最終更新 | 2026-09-06 |
+| タグ方針 | **VLM `auto` 廃止** → filename + tagger + d1 |
+| 自動化 | cron（ingest / embed / missing） |
+| **次に読む** | [tag-stack-migration.md](docs/plans/tag-stack-migration.md) · [roadmap](docs/plans/project-roadmap.md) · [GPU 配置](docs/setup/gpu-workloads.md) |
 
 ## ドキュメントの読み方
 
@@ -19,6 +20,8 @@
 | 全体像 | [docs/architecture/overview.md](docs/architecture/overview.md) | コンポーネント構成・データフロー |
 | 仕様 | [docs/specs/](docs/specs/) | 実装契約（「こう動く」の定義） |
 | 計画 | [docs/plans/](docs/plans/) | フェーズ別タスク・完了条件 |
+| **次の実装** | [tag-stack-migration.md](docs/plans/tag-stack-migration.md) | M0 purge → tagger → d1 |
+| 現在地・パイプライン | [project-roadmap.md](docs/plans/project-roadmap.md) | Phase と索引 v2 |
 | 判断記録 | [docs/decisions/](docs/decisions/) | ADR（設計判断の記録） |
 | 未決定 | [docs/open-questions.md](docs/open-questions.md) | TBD 事項のトラッキング |
 

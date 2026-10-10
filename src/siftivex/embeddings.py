@@ -20,7 +20,7 @@ TABLE_NAME = "embeddings"
 
 
 def _default_device() -> str:
-    """Prefer secondary GPU for CLIP (primary often runs VLM/llama-swap)."""
+    """Prefer cuda:1 when 3-GPU host (cuda:0 = llama-swap). See docs/setup/gpu-workloads.md."""
     import os
 
     if env := os.environ.get("SIFTIVEX_DEVICE"):

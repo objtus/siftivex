@@ -1,12 +1,26 @@
 # インデックスパイプライン
 
-> **状態**: 初回 bulk 投入完了（2026-09-06）
-> **参照**: [blueprint.md](../../blueprint.md) §自動インデックス化フロー, [phase-1-prep.md](../decisions/phase-1-prep.md)
+> **状態**: Phase 1 bulk 完了（2026-09-06）· **索引 v2 移行中**（2026-10-10）  
+> **参照**: [blueprint.md](../../blueprint.md), [tag-stack-migration.md](../plans/tag-stack-migration.md)
 
-## 概要
+## 目標フロー（2026-10 — 実装進行中）
+
+```
+ingest → filename + サムネ + OCR + index_jobs(tagger) [将来: d1]
+embed  → CLIP → LanceDB（現行維持）
+tagger → source=auto_tagger（バッチ / cron）
+d1     → source=auto_d1（tagger 後）
+VLM    → キャプションのみ・手動（タグ source=auto は使わない）
+```
+
+詳細手順: [tag-stack-migration.md](../plans/tag-stack-migration.md) M0〜M5。
+
+## 概要（現行コードの挙動）
 
 新規画像の検知から DB/LanceDB への書き込みまでの処理フロー。
-n8n（トリガー・スケジュール）+ FastAPI/スクリプト（処理本体）+ SQLite キュー（VLM ジョブ管理）。
+n8n + スクリプト + SQLite キュー。**コード上はまだ VLM ジョブを積む箇所がある** — M1 と同時に tagger キューへ切替予定。
+
+**レガシー**: 以下「VLM タグ付け」は Phase 1 までの運用。`auto` タグは移行計画で削除する。
 
 ## フロー
 
@@ -18,8 +32,8 @@ n8n（トリガー・スケジュール）+ FastAPI/スクリプト（処理本�
   │
   ├─ [定期] scripts/n8n_task.py embed
   │
-  └─ [VLM] index_jobs に積むのみ → Phase 2 UI/API で手動実行
-       （→ [vlm-on-demand.md](../decisions/vlm-on-demand.md)）
+  └─ [レガシー] index_jobs(vlm_tag) — **廃止予定**（→ tagger キュー）
+       VLM 実行は [vlm-on-demand.md](../decisions/vlm-on-demand.md)（キャプション用）
 ```
 
 ## 処理詳細
@@ -106,7 +120,7 @@ n8n（トリガー・スケジュール）+ FastAPI/スクリプト（処理本�
 | 順 | アーカイブ | 枚数 | 備考 |
 |---|---|---|---|
 | 1 | under.iphone | ~4,000 | 手動バッチでパイプライン検証 |
-| 2 | pixiv | ~36,500 | 検証後に bulk。VLM はキュー漸進 |
+| 2 | pixiv | ~36,500 | bulk 済。~~VLM キュー~~ → **tagger バッチ**（[移行](../plans/tag-stack-migration.md)） |
 
 初回は n8n poll ではなく **手動バッチ1回**。以降は n8n 自動。
 
@@ -115,7 +129,7 @@ n8n（トリガー・スケジュール）+ FastAPI/スクリプト（処理本�
 | 順 | アーカイブ | ingest | embed | VLM |
 |---|---|---|---|---|
 | 1 | under.iphone | ✅ 3,926 | ✅ 3,924 | ✅ 3,901 caption（`run_vlm_overnight` ~15h） |
-| 2 | pixiv | ✅ 36,394 | ✅ 36,381 | ⏭ Phase 2（~36k キュー pending） |
+| 2 | pixiv | ✅ 36,394 | ✅ 36,381 | ~~VLM pending~~ → M0 でキュー破棄 · M1 tagger 予定 |
 
 - **embed**: `make batch-archive` → `embed_pending.py --route route/pixiv`（2回目再開含む ~10h）
 - **skip 15 枚**: pixiv webm 13 + under.iphone 破損 2

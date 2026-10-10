@@ -1,6 +1,6 @@
 # タグのクオリティ考察（設計について）
 
-> **状態**: 調査中（2026-09-07）
+> **状態**: 一部反映済み（2026-09-07）
 > **対象**: `data/siftivex.db` の `image_tags`（auto=VLM / filename=ファイル名パーサー）
 > **目的**: タグのクオリティ・一貫性について**設計の観点**から考察する
 > **補足**: pixiv 由来（36,394 枚）は VLM 未通し・pixiv コミュニティタグのため本検証対象外。under.iphone 由来（3,926 枚・VLM 済み）を調査。
@@ -15,9 +15,9 @@
 2. それを土台に**初級タグシステムを設計**。
 3. **VLM（`auto`）で画像からタグを追加生成し、データベースに保存**。
 
-このため **`filename` と `auto` が同一タグを共有（重複）することは意図通りの挙動であり、本章では問題にしない**。重複そのものの検証は本章の範囲外。
+このため **`filename` と `auto` が同一タグを別ソースとして DB に保存されることは意図通り**であり、保存そのものは問題にしない。
 
-本章で対象にするのは、**タグ生成・保存の「設計」がクオリティ・一貫性にどう影響しているか**のみ。
+一方、**表示・検索・統計で結合する段階**（`effective_tags()` 等）では重複を除く設計が必要。本章で対象にするのは、**タグ生成・保存・結合の「設計」がクオリティ・一貫性にどう影響しているか**。
 
 本章の考察は**単一の取り込み源（under.iphone）に特化した設計ではない**前提で読む。考慮すべき前提:
 
@@ -34,44 +34,51 @@
 
 | ID | 問題 | 概要 |
 |---|---|---|
-| P1 | ソース間重複 | filename と auto が同名タグを別ソースで重複保存・結合ルール未定義 |
-| P2 | 非公式 namespace | VLM が許容リスト外の namespace（`靴の` 等）を独自作成 |
-| P3 | ネスト規則不一致 | 同一システム内でネスト／扁平がぶれる（文章/ショ vs 文章/ショ） |
-| P4 | 同義 flat タグ共存 | セーラー服 と セーラー襟 のように同義タグが両方保存 |
-| P5 | flat の上限未適用・外れ値 | 範囲 1〜428 グ。上限 max_flat_tags=60 が未適用で外れ値発生 |
+| P1 | ソース間結合ルール欠如 | DB 上の filename/auto 二重保存は意図通りだが、結合時 dedup・優先順位が未設計（`effective_tags` が重複返却） |
+| P2 | 非公式 namespace 風タグ | VLM が許容リスト外の slash 付きタグ（`靴のNR/BRソール` 等）を flat に出力 |
+| P3 | ネスト規則不一致 | 同一概念でネスト／扁平がぶれる（`種類/文章/スクショ` vs `文章/スクショ`） |
+| P4 | 同義 flat タグ共存 | `セーラー服` と `セーラー襟` のように同義タグが両方保存 |
+| P5 | flat の上限未 enforce・外れ値 | 範囲 1〜428 グ。上限 max_flat_tags=60 がプロンプトのみで post-process 未適用 |
 | P6 | flat の冗長・細分 | まつげ カール/パーマ/ボリューム… のよう同一語幹を細分大量出力 |
-| P7 | namespace と flat の重複 | 種類/写真 と 写真 が同一画像で重複 |
+| P7 | namespace と flat の重複 | `種類/写真` と `写真` が同一画像で重複（プロンプト禁止あり、保存時 enforce なし） |
 
 ---
 
 ## 2. 確認した問題（データ証拠付き）
 
-### P1 — ソース間重複（影響度: 中）
+### P1 — ソース間結合ルール欠如（影響度: 中）
 
-`filename` と `auto` が同一タグを両方付ける（前提どおり重複は許容）。ただし両者が**同じ名前で別ソースに保存される設計**であり、結合ロジックが重複を前提になっているか不明。
+**P1a（保存）**: `filename` と `auto` が同一タグを別ソースに保存 — **意図通り**（§0 参照）。
+
+**P1b（結合）**: 結合ロジックが重複を前提にしておらず、実害が出ている。
 
 | タグ | 両ソースに存在する画像数 |
 |---|---|
-| 毛 / まんこ / パンツ | 626 / 589 / 563 |
-| 乳首 / 制服 / チラ | 294 / 229 / 220 |
+| 毛 / まんこ / パンツ | 630 / 586 / 565 |
+| 乳首 / 制服 / チラ | 295 / 229 / 220 |
 | うんこ / カス / 脚 / 腋 / メガネ | 200 / 190 / 163 / 137 / 135 |
 | 透け / アナル / 修正 / 染み | 128 / 126 / 125 / 124 |
 
-→ 重複自体は意図通り。問題なのは、**`filename` を確定情報として優先する設計になっておらず、VLM が filename のタグを再提案・増殖させる構造**であること。結合時に「filename を確定・auto を補足・重複時は auto を抑制」という設計が欠けている。
+- 上記は `auto` と `filename` が同名タグを両方持つ画像数（§6 P1 クエリ）。
+- **`effective_tags()` はソース間 dedup なし** — 同一 `(image_id, tag)` が `auto` と `filename` に両方あると、表示・検索・インデックスに**2 回出る**。
+- 重複タグを 1 つ以上持つ画像は **2,220 枚**（under.iphone 3,926 の過半数）。
 
-### P2 — 非公式 namespace の発明（影響度: 小〜中）
+→ 問題の本質は、**`filename` を確定情報として結合時に優先する設計がなく**、VLM が `priority_tags` として渡されたタグを flat に再出力する構造（プロンプト上 `MUST appear in flat_tags`）と組み合わさって、**保存・表示の両方で冗長が増える**こと。結合時に「filename を確定・auto を補足・同値なら 1 件にまとめる」ルールが欠けている。
+
+### P2 — 非公式 namespace 風タグ（影響度: 小〜中）
 
 ```
 靴のNR/BRソール  靴のBR/CRソール  靴のNR/EPDMソール  靴のNR/SBRソール ...（8〜9種）
 ```
 
-- `靴の` はパーサー由来ではなく **VLM が新規作成した namespace**（`under_iphone_legacy_v1.yaml` には不存在、`source=auto`）。
-- コードの `NAMESPACE_OPTIONS` は `種類/画角/アングル/人数` の4つのみ。`validate_namespace_tags()` は値の正当性しか確認しない。
-- 影響は小規模（7 画像）だが、「namespace はこれだけ」とプロンプトが閉じていない証拠。
+- `靴の` はパーサー由来ではなく **VLM が slash 付きで新規作成した疑似 namespace**（`under_iphone_legacy_v1.yaml` には不存在、`source=auto`、**flat タグとして保存**）。
+- コードの `NAMESPACE_OPTIONS` は `種類/画角/アングル/人数` の4つのみ。`validate_namespace_tags()` は既知キーの**値の正当性**しか確認しない（未知キーは JSON から黙殺）。
+- 影響は小規模（**18 画像**、タグ種 8〜9）だが、「namespace はこれだけ」とプロンプトが閉じていない証拠。
 
 ### P3 — ネスト規則の不一致（影響度: 中）
 
-- `種類/文章/ショ`（正しくネスト）と `文章/ショ`（浮遊）が混在。
+- `種類/文章/スクショ`（正しくネスト、10 件）と `文章/スクショ`（浮遊、5 件）が混在。
+- 許可リスト上の正規形は `種類/` 配下。VLM の省略・誤ネストと思われる。
 - 同一システム内で「いつネストするか」が規則化されていない。
 
 ### P4 — 同義 flat タグの共存（影響度: 大）
@@ -81,12 +88,14 @@
 IMG2623_乳首-制服-透け.JPG ... セーラー服 ... セーラー襟 ...
 ```
 
-- セーらい服 と セーらい襟 が**同一画像で両方保存**。両方を持つ画像は **74 画像**で確認（P4再現クエリで算出）。
-- 意味が近いタグを VLM が両方出力。flat の統一的語彙ルールが働いていない。
+- `セーラー服` と `セーラー襟` が**同一画像で両方保存**。両方を持つ画像は **73 画像**（§6 P4 クエリ）。
+- 意味が近いタグを VLM が両方出力。`aliases` に `セーラー襟` → `セーラー服` が無く、VLM 出力にも `normalize_tags` が未適用。
+- 注: 資料によっては意図的な粒度の可能性あり。alias 統合前にサンプル目視を推奨。
 
-### P5 — flat タグ上限の未適用・外れ値（影響度: 中）
+### P5 — flat タグ上限の未 enforce・外れ値（影響度: 中）
 
 under.iphone の flat タグ数分布:
+
 | flat数 | 画像数 |
 |---|---|
 | 1 | 23 |
@@ -94,10 +103,11 @@ under.iphone の flat タグ数分布:
 | 15〜25 | 各130〜180（ピーク） |
 | 26〜60 | 減少傾向 |
 | 61〜150 | 少数 |
-| 最大 | **428**（外れ値1画像） |
+| 最大 | **428**（`img_8d9793446bc22d75`、外れ値1画像） |
+
 - flat 数の分布は **1〜428 と広範囲**。1 グは 23 画像と少なく、標準は 10〜25 前後で山をなる。
 - **最大 428 グ**の画像が1存在。極端な外れ値。
-- flat には上限(**max_flat_tags=60**)があるのに**未適用**。60 を遥かに超える出力が実際に発生。
+- `max_flat_tags=60` はプロンプトに記載されるが、`vlm.py` の post-process に truncate が無く**未 enforce**。60 を遥かに超える出力が実際に発生。
 
 ### P6 — flat タグの冗長・細分（影響度: 中）
 
@@ -106,7 +116,7 @@ IMG4440: まつげ, まつげエクステ, まつげカーブ, まつげカー�
 ```
 
 - 同一語幹（まつげ）を細分したタグを VLM が大量出力。
-- 検索粒度として過剰。実質同一概念のバリエーション。
+- 検索粒度として過剰な場合がある。ただし「まつげカール」で絞りたい需要もあり得る — 一律削除より語彙表での親語彙への畳み込みが現実的。
 
 ### P7 — namespace と flat の重複（影響度: 中）
 
@@ -116,26 +126,26 @@ IMG5594_毛-パンツ.JPG:    種類/写真 + 写真
 IMG6481_乳首-体操着-透け: 種類/写真 + 写真
 ```
 
-- `種類/写真`（namespace）と `写真`（flat）が同一画像で重複。
-- namespace で表現できる概念を flat にも保存。P1 と同種の冗長。
+- `種類/写真`（namespace）と `写真`（flat）が同一画像で重複（**51 画像**）。
+- プロンプトには `Do not duplicate namespace_tags in flat_tags` があるが、**保存時・結合時の enforce が無い**。P1b と同種の冗長。
 
 ---
 
-## 3. 根本原因（プロンプト設計の甘さ）
+## 3. 根本原因（プロンプトと enforce の分離）
 
-`src/siftivex/tag_vocabulary.py::build_system_prompt()` 現状の指示:
+`src/siftivex/tag_vocabulary.py::build_system_prompt()` の指示と、コード側の enforce 状況:
 
-| 指示 | 効果 |
-|---|---|
-| namespace 値は許可リストから選択 | P2 に部分的に効く（不完全） |
-| flat は優先語彙 exact match | flat の統一には効く（P4/P6 に届かない） |
-| ソース間の優先順位・重複排除 | **無い** → P1, P7 の主因 |
-| namespace は指定以外を作らない | 弱い → P2 |
-| ネスト規則 | **無い** → P3 の主因 |
-| 同義タグの除外 | **無い** → P4, P6 の主因 |
-| flat の密度・上限 | **無い** → P5, P6 の主因 |
+| 指示（プロンプト） | enforce（コード） | 関連問題 |
+|---|---|---|
+| namespace 値は許可リストから選択 | `validate_namespace_tags()` で既知キーの値のみ検証 | P2（slash 付き flat は素通り） |
+| flat は優先語彙 exact match | なし（VLM 出力に `normalize_tags` 未適用） | P4, P6 |
+| priority_tags MUST appear in flat_tags | なし（再出力を**促す**側面あり） | P1b |
+| Do not duplicate namespace in flat | なし | P7 |
+| flat max {max_flat_tags} | **なし**（`vlm.py` に truncate 無し） | P5, P6 |
+| ネスト規則 | なし | P3 |
+| 同義タグの除外 | なし（`aliases` は filename 取込時のみ） | P4, P6 |
 
-→ **指示そのものより、指示を適用する結合ロジック（ソース優先順位・dedup・同義マージ・密度上限）が未設計**が核心。
+→ **核心は「プロンプトに書いてあるが、保存・結合ロジックで enforce していない」こと**。VLM 遵守に依存する設計では P1〜P7 が再発する。
 
 ---
 
@@ -149,7 +159,9 @@ IMG6481_乳首-体操着-透け: 種類/写真 + 写真
 - **優先タグの整理**: priority_tags の位置づけと、他ソースとの優先関係を洗練する。
 - **namespace の洗練**: 許容リストを粛正し（P2）、ネスト規則を明確化（P3）する。
 
-P1〜P7 はこの土台を固めるための**入力（確認材料）**であって、ゴールではない。実装は都方針を決めながら進める。
+P1〜P7 はこの土台を固めるための**入力（確認材料）**であって、ゴールではない。実装は都度方針を決めながら進める。
+
+**実装優先度の目安**: P5 enforce → `effective_tags` dedup（P1b/P7）→ VLM 出力への `normalize_tags` / alias → 語彙表拡充（P4/P6）。
 
 ### namespace の追加判定基準（決定済み）
 
@@ -159,7 +171,7 @@ namespace を追加するのは、次の **3 つの条件をすべて満たす�
 2. **源に依存しない**（under.iphone だけでなく pixiv・将来の源でも通用する）
 3. **その軸でフィルタしたい需要がある**
 
-この基準を満たさない軸（髪型・衣装など値が数百単位でぶれる）は namespace ではなく **flat + 語彙表** Treatment。
+この基準を満たさない軸（髪型・衣装など値が数百単位でぶれる）は namespace ではなく **flat + 語彙表で扱う**。
 
 - **光の方向**（順光 / 逆光 / 側光 / 上光 / 下光）: 値は有限・源非依存・フィルタ需要あり → namespace 化の好候補。排他的なため**単一値**で、現行 4 つ（種類/画角/アングル/人数）と同設計。
 - **光源・光の質**（蛍光灯 / 自然光 / やわらい光 / 硬い光…）: 複合して成立するため「光の方向」とは**別軸**。複数値対応が必要ならそれに合わせて設計。
@@ -171,22 +183,22 @@ namespace を追加するのは、次の **3 つの条件をすべて満たす�
 
 > 以下の各案は**検討中の候補**であり、そのまま採用しない。土台を固めながら試行錯誤で取捨選択する。源別・状況別の細かいルール網羅は意図しない。
 
-### P1（ソース間重複）への案
+### P1（ソース間結合）への案
 
-- **← 対応問題：P1（別ソースによる同名重複）、P7（namespace/flat の重複）**
-- ソースを provenance で区別: `confirmed`（filename・手動／確定済み）と `proposed`（auto／VLM 提案）を `source` で明示。表示・検索・統計では `confirmed` を優先。
-- 重複時の結合ルール: `confirmed` と `proposed` が同値なら `confirmed` を残し `proposed` を省略（2 目を作らない）。namespace と flat が同義（P7）も同様に `confirmed` 側を優先。
-- VLM プロンプトの追加指示: 「priority_tags として渡したタグは既定とみなす。重複タグを再出力せず、新規に確認したタグのみを追加してください」。
-- `confirmed` が誤りの場合: 既存の `manual` 差分レイヤー（最優先）で修正・削除。ここは既存設計を流用。
-- 注意: `confirmed` が多い源では VLM の効きが鈍る可能性。源ごとに `confirmed` の許容量を調整する余地は残す（規定しない）。
+- **← 対応問題：P1b（結合 dedup・優先順位）、P7（namespace/flat の重複）**
+- `source` は既に `filename` / `auto` / `manual_added` / `manual_removed` がある。**rename より結合ルール追加**が変更は小さい。
+- 結合ルール: `filename`（確定）と `auto`（提案）が同値なら **1 件にまとめる**。`effective_tags()` で `DISTINCT` または優先順位付き dedup。namespace と flat が同義（P7）も同様。
+- VLM プロンプトの見直し: 現行 `MUST appear in flat_tags` は再出力を促す。`priority_tags` は「確認済み・再出力不要。新規タグのみ追加」と明示する方向を検討。
+- 誤った確定タグ: 既存の `manual_removed` / `manual_added` 差分レイヤー（最優先）で修正。既存設計を流用。
+- 注意: 確定タグが多い源では VLM の効きが鈍る可能性。源ごとの調整余地は残す（規定しない）。
 
-### P2（非公式 namespace）への案
+### P2（非公式 namespace 風タグ）への案
 
-- **← 対応問題：P2（許容リスト外の namespace を VLM が発明）**
+- **← 対応問題：P2（許容リスト外の slash 付きタグ）**
 - NAMESPACE_OPTIONS を階層（ツリー）で定義: `種類/{写真, イラスト, ...}` のように親-子を 1 つの構造で持つ。
 - プロンプトにネスト完全リストを注入: 「値は下図のリストから。リスト外は出力禁止」。
-- validate を再帰検証に改める: 親は NAMESPACE_OPTIONS のキーであること、子はその親の許容リストに属することをチェック。いずれも満たさなければそのタグを破棄（または flat へ降格）。
-- 「namespace 化すべきでない概念」は flat へ規定: 分類できる子分類が無い概念は namespace にせず flat として許容。これが `靴の` 系の回避策になる。
+- validate を再帰検証に改める: 親は NAMESPACE_OPTIONS のキーであること、子はその親の許容リストに属することをチェック。いずれも満たさなければ破棄（または flat へ降格）。
+- post-process: flat 内の `foo/bar` 形式を検出し、許可リスト外なら破棄または flat 単語へ降格。これが `靴の` 系の回避策になる。
 
 ### P3（ネスト規則）への案
 
@@ -199,26 +211,28 @@ namespace を追加するのは、次の **3 つの条件をすべて満たす�
 
 - **← 対応問題：P4（セーラー服 & セーラー襟 の同義共存）**
 - 同義タグを `aliases`（語彙表）で統合。`セーラー襟` → `セーラー服` のように正規形へマージ。
+- VLM 出力にも `normalize_tags` を適用（現状は filename 取込時のみ）。
 - VLM には「同義のタグを同時に出力しない／正規形のみ出力」を指示。
-- 既存の語彙機構（`build-vocabulary` / aliases）で対応可能か確認。無ければ別源にも通用する語彙ルールとして一般化。
+- 統合前に P4 対象画像のサンプル目視で、意図的な粒度でないか確認。
 
-### P5（flat の上限未適用・外れ値）への案
-- **← 対応問題：P5（flat 数の範囲が 1〜428 と広範囲。428 グの極端な外れ値と、上限ルールの未適用）**
-- flat の**上限 `max_flat_tags`=60 を確実に適用**。60 を遥かに超える出力が実際に発生している＝上限ルールが未適用（実装欠落）。
+### P5（flat の上限未 enforce・外れ値）への案
+
+- **← 対応問題：P5（flat 数 1〜428、428 グの外れ値、上限未 enforce）**
+- `vlm.py` post-process で `flat_tags[:max_flat_tags]` を enforce。プロンプトのみに依存しない。
 - 下限は**源ごとの許容範囲としてパラメータ管理**（固定値にせず、下回った場合に補完指示）。
-- 極端な外れ値（428 グ）は上限適用で自動的に解消する可否を確認。
+- 428 グ外れ値は上限適用で自動解消。
 
 ### P6（冗長・細分）への案
 
 - **← 対応問題：P6（まつげカール/パーマ/… の細分大量出力）**
 - 同一語幹の細分タグを**1語に集約**（まつげ系 → `まつげ`）。語彙表で「細分語彙 → 親語彙」のマッピングを保持。
-- VLM には「細かな特徴は1語に まとめ、バリエーションを列挙しない」を指示。
-- 必要なら `max_flat_tags` で総数を抑制（P5 と連動）。
+- VLM には「細かな特徴は1語にまとめ、バリエーションを列挙しない」を指示。
+- `max_flat_tags` enforce（P5）と連動。
 
 ### 補足: caption の扱い（要検討）
 
-- 現状 caption は 11-40 字が 3,262 画像で主に良質（記述型）。ただし 0-10 字が 4 画像存在。
-- **← 対応問題: caption の短過ぎ（品質保証）**。短すぎcaption は VLM に「1文で状況を記述」を追加指示することで対応可（要検証）。
+- under.iphone で caption 長分布: **0–10 字 4 枚**、**11–40 字 3,262 枚**、41+ 字 636 枚（§6 caption クエリ）。おおむね良質だが短過ぎが少数存在。
+- **← 対応問題: caption の短過ぎ（品質保証）**。VLM に「1文で状況を記述」を追加指示することで対応可（要検証）。
 
 ---
 
@@ -226,14 +240,69 @@ namespace を追加するのは、次の **3 つの条件をすべて満たす�
 
 ```bash
 cd ~/siftivex
-# P1: クロス源重複
-sqlite3 data/siftivex.db "SELECT a.tag, COUNT() FROM image_tags a JOIN image_tags b ON a.image_id=b.image_id AND a.tag=b.tag AND b.source='filename' WHERE a.source='auto' GROUP BY a.tag ORDER BY 2 DESC LIMIT 15;"
-# P2: 非公式 namespace
-sqlite3 data/siftivex.db "SELECT tag, COUNT() FROM image_tags it JOIN images i ON i.image_id=it.image_id WHERE it.source='auto' AND it.tag LIKE '%/%' AND substr(tag,1,instr(tag,'/')-1) NOT IN ('種類','アングル','人数','画角') GROUP BY tag;"
-# P4: 同義共存（セーラー服 & セーラー襟 が同一画像で両方存在）
-sqlite3 data/siftivex.db "SELECT COUNT(DISTINCT a.image_id) FROM image_tags a JOIN image_tags b ON a.image_id=b.image_id WHERE a.source='auto' AND b.source='auto' AND a.tag LIKE 'セー%' AND a.tag LIKE '%服' AND b.tag LIKE 'セー%' AND b.tag LIKE '%襟';"  -- 実行結果: 74
+
+# P1: クロス源重複（auto と filename が同名タグを両方持つ件数）
+sqlite3 data/siftivex.db \
+  "SELECT a.tag, COUNT(DISTINCT a.image_id) FROM image_tags a
+   JOIN image_tags b ON a.image_id=b.image_id AND a.tag=b.tag AND b.source='filename'
+   WHERE a.source='auto' GROUP BY a.tag ORDER BY 2 DESC LIMIT 15;"
+
+# P1b: effective_tags 相当の重複（表示・検索に2回出る画像数）
+sqlite3 data/siftivex.db \
+  "SELECT COUNT(DISTINCT image_id) FROM (
+     SELECT image_id, tag, COUNT(*) c FROM image_tags
+     WHERE source IN ('auto','filename','manual_added')
+     GROUP BY image_id, tag HAVING c > 1
+   );"
+
+# P2: 非公式 slash 付きタグ（flat に保存された疑似 namespace）
+sqlite3 data/siftivex.db \
+  "SELECT tag, COUNT(*) FROM image_tags
+   WHERE source='auto' AND tag LIKE '%/%'
+     AND substr(tag,1,instr(tag,'/')-1) NOT IN ('種類','アングル','人数','画角')
+   GROUP BY tag ORDER BY 2 DESC;"
+
+sqlite3 data/siftivex.db \
+  "SELECT COUNT(DISTINCT image_id) FROM image_tags
+   WHERE source='auto' AND tag LIKE '靴の%';"
+
+# P3: ネスト不一致
+sqlite3 data/siftivex.db \
+  "SELECT tag, COUNT(*) FROM image_tags
+   WHERE source='auto' AND (tag='種類/文章/スクショ' OR tag='文章/スクショ')
+   GROUP BY tag;"
+
+# P4: 同義共存（セーラー服 & セーラー襟）
+sqlite3 data/siftivex.db \
+  "SELECT COUNT(DISTINCT a.image_id) FROM image_tags a
+   JOIN image_tags b ON a.image_id=b.image_id
+   WHERE a.tag='セーラー服' AND b.tag='セーラー襟';"
+# 実行結果: 73
+
 # P5: flat 分布
-sqlite3 data/siftivex.db "SELECT COUNT(tag) AS c FROM image_tags WHERE source='auto' AND tag NOT LIKE '%/%' GROUP BY image_id;" | awk '{print $1}' | sort -n | awk '{c[$1]++} END{for(k in c) print k, c[k]}'
+sqlite3 data/siftivex.db \
+  "SELECT COUNT(tag) AS c FROM image_tags
+   WHERE source='auto' AND tag NOT LIKE '%/%'
+   GROUP BY image_id;" \
+  | awk '{print $1}' | sort -n | uniq -c | sort -k2 -n
+
+# P7: namespace + flat 重複
+sqlite3 data/siftivex.db \
+  "SELECT COUNT(DISTINCT a.image_id) FROM image_tags a
+   JOIN image_tags b ON a.image_id=b.image_id
+   WHERE a.tag='種類/写真' AND b.tag='写真';"
+# 実行結果: 51
+
+# caption 長分布（under.iphone）
+sqlite3 data/siftivex.db \
+  "SELECT CASE
+     WHEN length(vlm_caption) <= 10 THEN '0-10'
+     WHEN length(vlm_caption) <= 40 THEN '11-40'
+     ELSE '41+'
+   END AS bucket, COUNT(*)
+   FROM images
+   WHERE route_tag='route/under-iphone' AND vlm_caption IS NOT NULL
+   GROUP BY bucket;"
 ```
 
 ---
@@ -245,5 +314,24 @@ sqlite3 data/siftivex.db "SELECT COUNT(tag) AS c FROM image_tags WHERE source='a
 | タグ仕様 | `docs/specs/tags.md`（スケルトン） |
 | システムプロンプト | `src/siftivex/tag_vocabulary.py` (`build_system_prompt`) |
 | namespace 検証 | `src/siftivex/tag_vocabulary.py` (`validate_namespace_tags`) |
+| タグ結合 | `src/siftivex/tags_db.py` (`effective_tags`) |
 | under.iphone パーサー | `config/parsers/under_iphone_legacy_v1.yaml` |
 | VLM クライアント | `src/siftivex/vlm.py` |
+
+---
+
+## 8. 実装反映状況（2026-09-07）
+
+| 項目 | 状態 | 実装 |
+|---|---|---|
+| P5 flat 上限 enforce | ✅ | `process_vlm_tags()` → `vlm.py` で `max_flat_tags` truncate |
+| P1b ソース間 dedup | ✅ | `effective_tags()` で `DISTINCT` |
+| P7 namespace/flat dedup | ✅ | `dedupe_namespace_flat_tags()`（結合時 + VLM post-process） |
+| P2 非公式 slash タグ | ✅ | `process_vlm_tags()` で許可外 slash タグを破棄 |
+| P3 浮遊ネスト | ✅ | `文章/スクショ` 等を namespace へ promote |
+| P4 alias | ✅ | `セーラー襟` → `セーラー服`（DEFAULT_ALIASES + yaml） |
+| VLM 出力 normalize | ✅ | `process_vlm_tags()` で `normalize_tags` 適用 |
+| priority_tags 再出力抑制 | ✅ | プロンプト変更 + auto flat から priority 除去 |
+| P6 細分語彙畳み込み | 🔲 | 語彙表拡充は未着手（プロンプト指示のみ） |
+| namespace 更新（光の方向/） | ✅ | `NAMESPACE_OPTIONS` + 動的 schema プロンプト |
+| 既存 DB の一括修正 | 🔲 | 新規 VLM 実行・検索表示から効く。再タグは別途 |

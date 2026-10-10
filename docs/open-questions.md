@@ -26,6 +26,7 @@
 | ID | 項目 | 優先度 | ステータス | ブロックする Phase | 関連 spec |
 |---|---|---|---|---|---|
 | OQ-001 | 身体部位名前空間の具体的リスト | P2 | discussing | Phase 2 以降可 | [tags.md](specs/tags.md) |
+| OQ-010 | 役別スタック残 — Camie 比較・Gemma embed 移行・VLM V10 再計測（**タグ源は tagger+d1 に確定**） | P2 | discussing | — | [tag-stack-migration.md](plans/tag-stack-migration.md) |
 | — | 雑多なウェブ収集アーカイブ（~30–40k）の同期・取り込み | P2 | open | Phase 2+ | [paths.yaml.example](../config/paths.yaml.example) `web_misc` |
 
 ---

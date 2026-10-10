@@ -20,6 +20,7 @@ from siftivex.tag_vocabulary import (
     build_system_prompt,
     build_user_prompt,
     load_tag_vocabulary,
+    process_vlm_tags,
     validate_namespace_tags,
 )
 
@@ -33,6 +34,7 @@ class VlmTagResult:
     caption: str
     ocr_text: str
     raw: dict[str, Any]
+    reasoning_content: str = ""
 
 
 def load_vlm_config(path: Path | None = None) -> dict[str, Any]:
@@ -77,6 +79,43 @@ def _extract_json(text: str) -> dict[str, Any]:
     return json.loads(text)
 
 
+def build_vlm_chat_payload(
+    config: dict[str, Any],
+    *,
+    system_prompt: str,
+    user_text: str,
+    data_url: str,
+    max_tokens: int | None = None,
+) -> dict[str, Any]:
+    """Build llama-server chat/completions payload (exported for tests)."""
+    payload: dict[str, Any] = {
+        "model": config["model"],
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": user_text},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ],
+            },
+        ],
+        "max_tokens": int(max_tokens if max_tokens is not None else config.get("max_tokens", 512)),
+        "temperature": float(config.get("temperature", 0.1)),
+    }
+
+    enable_thinking = bool(config.get("enable_thinking", False))
+    template_kwargs: dict[str, Any] = {"enable_thinking": enable_thinking}
+    payload["chat_template_kwargs"] = template_kwargs
+
+    if enable_thinking:
+        budget = config.get("thinking_budget_tokens")
+        if budget is not None:
+            payload["thinking_budget_tokens"] = int(budget)
+
+    return payload
+
+
 class VlmClient:
     def __init__(
         self,
@@ -90,7 +129,16 @@ class VlmClient:
 
     def tag_image(self, path: Path, priority_tags: list[str] | None = None) -> VlmTagResult:
         max_flat_tags = int(self.config.get("max_flat_tags", DEFAULT_MAX_FLAT_TAGS))
-        system_prompt = build_system_prompt(self.vocabulary, max_flat_tags=max_flat_tags)
+        enable_thinking = bool(self.config.get("enable_thinking", False))
+        max_thinking_chars = self.config.get("max_thinking_chars")
+        if max_thinking_chars is not None:
+            max_thinking_chars = int(max_thinking_chars)
+        system_prompt = build_system_prompt(
+            self.vocabulary,
+            max_flat_tags=max_flat_tags,
+            enable_thinking=enable_thinking,
+            max_thinking_chars=max_thinking_chars,
+        )
         user_text = build_user_prompt(priority_tags or [], max_flat_tags=max_flat_tags)
 
         data_url = _image_to_data_url(
@@ -99,28 +147,18 @@ class VlmClient:
             quality=int(self.config.get("jpeg_quality", 85)),
         )
 
-        payload: dict[str, Any] = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": user_text},
-                        {"type": "image_url", "image_url": {"url": data_url}},
-                    ],
-                },
-            ],
-            "max_tokens": int(self.config.get("max_tokens", 512)),
-            "temperature": float(self.config.get("temperature", 0.1)),
-        }
-        if not self.config.get("enable_thinking", False):
-            payload["chat_template_kwargs"] = {"enable_thinking": False}
+        payload = build_vlm_chat_payload(
+            self.config,
+            system_prompt=system_prompt,
+            user_text=user_text,
+            data_url=data_url,
+        )
 
         timeout = float(self.config.get("timeout_seconds", 180))
         last_error: Exception | None = None
         tokens = int(self.config.get("max_tokens", 1536))
         max_attempts = int(self.config.get("max_parse_attempts", 3))
+        reasoning = ""
         for attempt in range(max_attempts):
             payload["max_tokens"] = tokens * (attempt + 1)
             try:
@@ -130,9 +168,10 @@ class VlmClient:
                     body = resp.json()
                 message = body["choices"][0]["message"]
                 content = (message.get("content") or "").strip()
-                if not content and message.get("reasoning_content"):
+                reasoning = (message.get("reasoning_content") or "").strip()
+                if not content and reasoning:
                     raise ValueError(
-                        "VLM returned reasoning only; increase max_tokens or disable thinking"
+                        "VLM returned reasoning only; increase max_tokens or reduce thinking_budget_tokens"
                     )
                 raw = _extract_json(content)
                 break
@@ -147,6 +186,13 @@ class VlmClient:
         if not isinstance(flat, list):
             flat = []
         flat_tags = [str(t).strip() for t in flat if str(t).strip()]
+        namespace, flat_tags = process_vlm_tags(
+            namespace,
+            flat_tags,
+            vocabulary=self.vocabulary,
+            max_flat_tags=max_flat_tags,
+            priority_tags=priority_tags or [],
+        )
         caption = str(raw.get("caption", "")).strip()
         ocr_text = str(raw.get("ocr_text", "")).strip()
 
@@ -156,4 +202,5 @@ class VlmClient:
             caption=caption,
             ocr_text=ocr_text,
             raw=raw,
+            reasoning_content=reasoning,
         )

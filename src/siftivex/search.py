@@ -73,7 +73,7 @@ def _tag_filter_clause(
                 SELECT 1 FROM image_tags t
                 WHERE t.image_id = {alias}.image_id
                   AND t.tag = ?
-                  AND t.source IN ('auto', 'filename', 'manual_added')
+                  AND t.source IN ('auto', 'filename', 'auto_tagger', 'auto_d1', 'inferred_ja', 'manual_added')
                   AND t.tag NOT IN (
                       SELECT tag FROM image_tags r
                       WHERE r.image_id = {alias}.image_id AND r.source = 'manual_removed'
@@ -89,7 +89,7 @@ def _tag_filter_clause(
                 SELECT 1 FROM image_tags t
                 WHERE t.image_id = {alias}.image_id
                   AND t.tag = ?
-                  AND t.source IN ('auto', 'filename', 'manual_added')
+                  AND t.source IN ('auto', 'filename', 'auto_tagger', 'auto_d1', 'inferred_ja', 'manual_added')
                   AND t.tag NOT IN (
                       SELECT tag FROM image_tags r
                       WHERE r.image_id = {alias}.image_id AND r.source = 'manual_removed'

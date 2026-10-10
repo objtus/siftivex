@@ -30,7 +30,7 @@ def write_png(path: Path, color: tuple[int, int, int]) -> None:
     Image.new("RGB", (8, 8), color).save(path)
 
 
-def test_ingest_new_file_registers_and_queues_vlm(db_conn: sqlite3.Connection, tmp_path: Path):
+def test_ingest_new_file_registers_and_queues_tagger(db_conn: sqlite3.Connection, tmp_path: Path):
     img = tmp_path / "sample.png"
     write_png(img, (255, 0, 0))
 
@@ -42,7 +42,7 @@ def test_ingest_new_file_registers_and_queues_vlm(db_conn: sqlite3.Connection, t
     result = ingest_file(img, db_conn, folder_rules=rules, skip_ocr=True)
     assert result.is_new is True
     assert result.route_tag == "route/test"
-    assert result.vlm_queued is True
+    assert result.tagger_queued is True
     assert result.embedded is False
     assert result.thumbnails_created is True
     assert result.search_indexed is True
@@ -54,7 +54,7 @@ def test_ingest_new_file_registers_and_queues_vlm(db_conn: sqlite3.Connection, t
     assert row == ("route/test", "active")
 
     jobs = db_conn.execute(
-        "SELECT COUNT(*) FROM index_jobs WHERE image_id = ? AND job_type = 'vlm_tag'",
+        "SELECT COUNT(*) FROM index_jobs WHERE image_id = ? AND job_type = 'tagger_tag'",
         (result.image_id,),
     ).fetchone()[0]
     assert jobs == 1
@@ -73,7 +73,7 @@ def test_ingest_duplicate_updates_path_only(db_conn: sqlite3.Connection, tmp_pat
     assert first.is_new is True
     assert second.is_new is False
     assert first.image_id == second.image_id
-    assert second.vlm_queued is False
+    assert second.tagger_queued is False
 
     path_row = db_conn.execute(
         "SELECT source_path FROM images WHERE image_id = ?",
@@ -178,7 +178,7 @@ def test_ocr_queues_when_engine_unavailable(db_conn: sqlite3.Connection, tmp_pat
     ).fetchall()
     job_types = {row[0] for row in jobs}
     assert "ocr" in job_types
-    assert "vlm_tag" in job_types
+    assert "tagger_tag" in job_types
 
 
 def test_resolve_pixiv_metadata_prefers_sidecar(tmp_path: Path):

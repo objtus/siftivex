@@ -1,0 +1,30 @@
+# Copy to config/model_stack_pilot.yaml for scripts/model_stack_pilot.py
+
+tagger:
+  repo_id: cella110n/cl_tagger
+  cache_dir: data/pilot_models/cl_tagger
+  general_threshold: 0.35
+  character_threshold: 0.85
+  max_tags: 64
+
+embedding_gemma2:
+  model_id: google/embeddinggemma-2
+  dtype: bfloat16  # float16 unsupported; use bfloat16 or float32
+  device: cpu  # cuda when GPU has headroom; shared GPU may OOM
+
+d1:
+  model_id: LiquidAI/d1-3B
+  prefer_cuda: false  # true when GPU has ~8GB+ free (else OOM with other models loaded)
+  max_new_tokens: 64
+
+decision_questions:
+  - id: is_photo
+    prompt: "この画像は実写写真ですか？ yes または no で答えてください。"
+    type: yes_no
+  - id: archive_quality
+    prompt: "個人アーカイブに残す品質ですか？ yes または no で答えてください。"
+    type: yes_no
+
+legacy_vlm:
+  # Uses config/vlm.yaml when --include-legacy-vlm
+  enabled: false

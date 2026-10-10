@@ -1125,11 +1125,46 @@ a {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
+  margin-bottom: 0;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin-bottom: 6px;
+}
+
+.btn-retag {
+  font-size: 11px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+
+.btn-retag:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .tag-editor .chip {
   margin: 0 4px 4px 0;
+}
+
+.tag-source-block + .tag-source-block {
+  margin-top: 10px;
+}
+
+.tag-source-label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted, #888);
+  margin-bottom: 4px;
+}
+
+.tag-editor-sub {
+  min-height: 0;
 }
 
 .tag-editor button.tag-filter {

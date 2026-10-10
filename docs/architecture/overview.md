@@ -1,7 +1,8 @@
 # システム全体像
 
-> **状態**: スケルトン
-> **参照**: [blueprint.md](../../blueprint.md) §推奨技術スタック
+> **状態**: スケルトン  
+> **参照**: [blueprint.md](../../blueprint.md) §推奨技術スタック  
+> **索引 v2（2026-10）**: VLM タグ廃止 → tagger/d1 — [tag-stack-migration.md](../plans/tag-stack-migration.md)
 
 ## 概要
 
@@ -41,7 +42,7 @@ Siftivex は既存の objtus-server 環境（Docker, llama-swap, n8n, Tailscale�
 フォルダ監視(n8n)
   → 新規ファイル検知
   → [即時] CLIP embedding + OCR → DB/LanceDB 書き込み
-  → [キュー] VLM タグ付け → auto_tags 更新
+  → [キュー] tagger / d1（目標）— レガシー: VLM → auto（廃止予定）
 ```
 
 → 詳細: [indexing.md](../specs/indexing.md)

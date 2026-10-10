@@ -22,6 +22,7 @@ const state = {
   originStack: [{ label: "開始", query: "", route: "all", scrollTop: 0 }],
   originIndex: 0,
   savedScrollTop: 0,
+  retagBusy: false,
 };
 
 const els = {};
@@ -115,8 +116,113 @@ function filterByTagFromDetail(tag) {
   void refreshList();
 }
 
-function renderDetailTags(tags) {
+function syncRetagButton() {
+  if (!els.btnRetag) return;
+  const show = state.useApi && !!state.activeId;
+  els.btnRetag.hidden = !show;
+  els.btnRetag.disabled = !show || state.retagBusy;
+  els.btnRetag.textContent = state.retagBusy ? "再タグ中…" : "再タグ";
+}
+
+function patchApiImageItem(data) {
+  if (!state.apiImages) return;
+  const idx = state.apiImages.findIndex((i) => i.image_id === data.image_id);
+  const patch = {
+    tags: data.tags ?? [],
+    tag_sources: data.tag_sources,
+    vlm_caption: data.vlm_caption ?? "",
+    prompt_revision: data.prompt_revision,
+  };
+  if (idx >= 0) {
+    state.apiImages[idx] = { ...state.apiImages[idx], ...patch };
+  }
+}
+
+async function readApiError(res) {
+  const raw = await res.text();
+  try {
+    const data = JSON.parse(raw);
+    if (typeof data.detail === "string") return data.detail;
+    if (Array.isArray(data.detail)) return data.detail.map((d) => d.msg ?? JSON.stringify(d)).join("; ");
+  } catch {
+    /* plain text */
+  }
+  return raw || res.statusText;
+}
+
+async function retagActiveImage() {
+  if (!state.useApi || !state.activeId || state.retagBusy) return;
+  state.retagBusy = true;
+  syncRetagButton();
+  try {
+    const res = await fetch(`/api/images/${encodeURIComponent(state.activeId)}/retag`, {
+      method: "POST",
+    });
+    if (!res.ok) {
+      const detail = await readApiError(res);
+      window.alert(`再タグに失敗しました (${res.status})\n\n${detail}`);
+      return;
+    }
+    const data = await res.json();
+    patchApiImageItem(data);
+    const list = filteredImages();
+    renderDetail(list);
+    renderListOnly(list);
+    if (els.btnRetag) {
+      const think = data.thinking_enabled
+        ? data.reasoning_chars > 0
+          ? `think ${data.reasoning_chars}字`
+          : "think 0字?"
+        : "think off";
+      const rev = data.prompt_revision ? ` · ${data.prompt_revision}` : "";
+      els.btnRetag.textContent = `完了 (${think}${rev})`;
+      setTimeout(() => syncRetagButton(), 4000);
+    }
+  } catch (err) {
+    console.warn("retag failed:", err);
+    window.alert(`再タグに失敗しました: ${err}`);
+  } finally {
+    state.retagBusy = false;
+    syncRetagButton();
+  }
+}
+
+function renderDetailTags(item) {
   els.detailTags.innerHTML = "";
+  const sources = item?.tag_sources;
+  if (sources && state.useApi) {
+    appendTagSourceBlock(els.detailTags, "ファイル名", sources.filename);
+    appendTagSourceBlock(els.detailTags, "Tagger (EN)", sources.auto_tagger);
+    appendTagSourceBlock(els.detailTags, "d1 namespace", sources.auto_d1);
+    if (sources.inferred_ja?.length) {
+      appendTagSourceBlock(els.detailTags, "推定 JA", sources.inferred_ja);
+    }
+    if (sources.auto?.length) {
+      appendTagSourceBlock(els.detailTags, "VLM (legacy)", sources.auto);
+    }
+    if (sources.manual_added?.length) {
+      appendTagSourceBlock(els.detailTags, "手動", sources.manual_added);
+    }
+    return;
+  }
+  appendTagChips(els.detailTags, item?.tags || []);
+}
+
+function appendTagSourceBlock(container, label, tags) {
+  const block = document.createElement("div");
+  block.className = "tag-source-block";
+  const head = document.createElement("div");
+  head.className = "tag-source-label";
+  head.textContent = `${label} (${(tags || []).length})`;
+  block.appendChild(head);
+  const row = document.createElement("div");
+  row.className = "tag-editor tag-editor-sub";
+  appendTagChips(row, tags || []);
+  block.appendChild(row);
+  container.appendChild(block);
+}
+
+function appendTagChips(container, tags) {
   for (const t of tags || []) {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -126,7 +232,7 @@ function renderDetailTags(tags) {
     btn.textContent = t;
     btn.title = state.tagStates[t] === 1 ? "絞り込みを解除" : "このタグで絞り込む";
     btn.addEventListener("click", () => filterByTagFromDetail(t));
-    els.detailTags.appendChild(btn);
+    container.appendChild(btn);
   }
 }
 
@@ -735,7 +841,8 @@ function renderDetailBody(list, item, gen) {
   prefetchDetailNeighbors(list);
 
   els.detailTags.innerHTML = "";
-  renderDetailTags(item.tags || []);
+  renderDetailTags(item);
+  syncRetagButton();
   els.detailMeta.innerHTML = `
     <dt>ID</dt><dd>${item.image_id}</dd>
     <dt>ファイル</dt><dd>${item.file_name}</dd>
@@ -760,10 +867,12 @@ function renderDetailBody(list, item, gen) {
 
   scheduleDetailContext(item, gen);
 
-  if (!item.metadata && state.useApi) {
+  if ((!item.metadata || !item.tag_sources) && state.useApi) {
     void (async () => {
       const full = await resolveDetailItem(list);
       if (gen !== detailRenderGen || !full) return;
+      patchApiImageItem(full);
+      renderDetailTags(full);
       scheduleDetailContext(full, gen);
     })();
   }
@@ -917,6 +1026,7 @@ function bindEvents() {
 
   els.detailPrev.addEventListener("click", () => navDetail(-1));
   els.detailNext.addEventListener("click", () => navDetail(1));
+  els.btnRetag?.addEventListener("click", () => void retagActiveImage());
   els.workPrev.addEventListener("click", () => navWork(-1));
   els.workNext.addEventListener("click", () => navWork(1));
   els.btnBackExplore.addEventListener("click", () => {
@@ -1053,6 +1163,7 @@ function init() {
   els.pageStrip = $("#page-strip");
   els.detailTags = $("#detail-tags");
   els.detailMeta = $("#detail-meta");
+  els.btnRetag = $("#btn-retag");
   els.similarStrip = $("#similar-strip");
   els.btnSimilarReflux = $("#btn-similar-reflux");
   els.bulkBar = $("#bulk-bar");

@@ -53,13 +53,21 @@ def migrate_phase1(db_path: Path | None = None) -> bool:
                 "SELECT 1 FROM schema_migrations WHERE version = 'phase1'"
             ).fetchone()
             if already:
+                from siftivex.tag_stack_migrate import apply_tag_stack_migrations
+
+                apply_tag_stack_migrations(path)
                 return False
 
         conn.executescript(migration_path.read_text(encoding="utf-8"))
         conn.commit()
-        return True
+        applied = True
     finally:
         conn.close()
+
+    from siftivex.tag_stack_migrate import apply_tag_stack_migrations
+
+    apply_tag_stack_migrations(path)
+    return applied
 
 
 def log_pipeline_run(
