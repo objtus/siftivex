@@ -59,6 +59,9 @@
                 <option value="tags">タグ数</option>
               </select>
             </label>
+            <button type="button" class="btn-load-more" id="btn-load-more" hidden>
+              さらに読み込み
+            </button>
             <span class="hint" id="nav-hint">クリックで詳細 · Shift+クリックで複数選択</span>
           </div>
           <div class="image-grid" id="image-grid"></div>
@@ -173,6 +176,13 @@
       <div class="lab-checks">
         <label><input type="checkbox" id="lab-api"> 実 API 接続</label>
       </div>
+      <section class="lab-index" id="lab-index" aria-label="索引ステータス">
+        <div class="lab-index-head">
+          <strong>索引 / タグスタック</strong>
+          <button type="button" class="btn-ghost btn-tiny" id="lab-index-refresh">更新</button>
+        </div>
+        <div class="lab-index-body" id="lab-index-body">API に接続して「更新」</div>
+      </section>
       <p class="lab-hint">
         <strong>案 A</strong>: リストと詳細を常時表示<br>
         <strong>案 B</strong>: 探索=リスト中心 · 画像クリック=閲覧 · Esc=探索へ（スクロール復元）<br>

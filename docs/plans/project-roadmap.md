@@ -1,6 +1,6 @@
 # プロジェクト・タスクパイプライン（現在地と全体計画）
 
-> **最終更新**: 2026-10-10（タグスタック移行計画を反映）  
+> **最終更新**: 2026-10-11（M1/M2 本番完了 → M3 着手）  
 > **目的**: フェーズ計画（Phase 0〜4）と **索引 v2**（tagger / d1）の関係を一枚で把握する。  
 > **実行手順**: [tag-stack-migration.md](tag-stack-migration.md)
 
@@ -49,8 +49,8 @@
 |---|---|
 | filename | ✅ 全ルート |
 | VLM `auto` | ⚠️ **移行対象 — 削除予定**（~3.9k 枚） |
-| auto_tagger / auto_d1 | ⬜ パイロットのみ |
-| pixiv VLM キュー | ⚠️ **破棄予定**（~36k pending） |
+| auto_tagger / auto_d1 | ✅ under + pixiv 本番バッチ済（~40k） |
+| pixiv VLM キュー | ✅ 破棄（M0） |
 | CLIP embed | ✅ |
 
 ### 完了済み（2026-10）
@@ -114,9 +114,9 @@ flowchart TD
 1. M0  purge_vlm_auto_tags（バックアップ → DELETE auto → VLM pending 削除）
 2. M1  tagger_batch + under.iphone 試行 → pixiv 全件
 3. M2  d1_batch + auto_d1
-4. M3  search/API tag_sources 拡張（mockup と揃える）
-5. Phase 2 React or mockup 昇格（並行可だが M3 後が楽）
-6. M4  inferred_ja（余裕があれば）
+4. **M3**  `/api/index/status` 拡張 ✅ · mockup 進捗表示 · ingest/cron 文書化
+5. **Phase 2** React or mockup 昇格（実利用検証）
+6. **M4**  inferred_ja · **M5** Gemma 再 embed
 ```
 
 ---

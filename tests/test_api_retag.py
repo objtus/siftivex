@@ -67,6 +67,16 @@ def test_retag_image_endpoint_not_found(api_client: TestClient):
     assert res.status_code == 404
 
 
+def test_index_status_includes_tag_stack(api_client: TestClient):
+    res = api_client.get("/api/index/status")
+    assert res.status_code == 200
+    data = res.json()
+    assert "tag_stack" in data
+    assert "with_auto_tagger" in data["tag_stack"]
+    assert "with_auto_d1" in data["tag_stack"]
+    assert "tag_stack_by_route" in data
+
+
 def test_list_images_include_tag_with_spaces(api_client: TestClient, tmp_path: Path):
     img = tmp_path / "a.png"
     Image.new("RGB", (4, 4), (1, 2, 3)).save(img)

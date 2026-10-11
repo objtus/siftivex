@@ -34,7 +34,7 @@
 
 | # | タスク | 状態 | 備考 |
 |---|---|---|---|
-| **—** | **索引 v2 M0〜M3** | **次** | [tag-stack-migration.md](tag-stack-migration.md) — Phase 2 より先 |
+| **—** | **索引 v2 M0〜M3** | **ほぼ完了** | mockup 検証 → [mockup-phase2.md](mockup-phase2.md) |
 | 2.1 | React + Vite プロジェクト作成 | pending | mockup 並行可 |
 | 2.2 | 検索 API 実装 | in progress | M3 で `auto_tagger` 等を FTS に |
 | 2.3 | 画像配信 API | done | |
@@ -42,7 +42,7 @@
 | 2.5 | ImageGrid + 仮想スクロール | pending | |
 | 2.6 | DetailScreen + 前後移動 | pending | tag_sources 表示 |
 | 2.7 | 実利用検証 | pending | M1 後のタグで実施 |
-| 2.9 | Tagger / d1 バッチ UI + API | pending | **2.8 より優先** |
+| 2.9 | Tagger / d1 バッチ UI + API | in progress | mockup Lab 索引ステータス ✅ |
 | 2.8 | VLM キャプション UI（タグなし） | pending | [vlm-on-demand.md](../decisions/vlm-on-demand.md) |
 
 ## 完了条件

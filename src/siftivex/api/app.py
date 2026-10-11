@@ -12,6 +12,7 @@ from siftivex.jobs import retag_image
 from siftivex.paths import DEFAULT_DB_PATH, DEFAULT_LANCE_PATH, DEFAULT_THUMBNAILS_DIR
 from siftivex.search import image_to_dict, search_images
 from siftivex.tag_vocabulary import PROMPT_REVISION
+from siftivex.tag_stack_status import tag_stack_by_route, tag_stack_summary
 from siftivex.tags_db import effective_tags, tags_grouped_by_source
 from siftivex.thumbnails import ThumbnailPaths, thumbnail_dir
 from siftivex.vlm import VlmClient
@@ -232,25 +233,18 @@ def get_preview(image_id: str) -> FileResponse:
 def index_status() -> dict:
     conn = get_connection(DEFAULT_DB_PATH)
     try:
-        total = conn.execute("SELECT COUNT(*) FROM images WHERE status='active'").fetchone()[0]
         embedded = conn.execute(
             "SELECT COUNT(*) FROM images WHERE status='active' AND indexed_at IS NOT NULL"
         ).fetchone()[0]
-        vlm_pending = conn.execute(
-            "SELECT COUNT(*) FROM index_jobs WHERE job_type='vlm_tag' AND status='pending'"
-        ).fetchone()[0]
-        by_route = conn.execute(
-            """
-            SELECT route_tag, COUNT(*) AS n
-            FROM images WHERE status='active'
-            GROUP BY route_tag ORDER BY n DESC
-            """
-        ).fetchall()
+        stack = tag_stack_summary(conn)
+        routes = tag_stack_by_route(conn)
     finally:
         conn.close()
     return {
-        "images_active": total,
+        "images_active": stack["images_active"],
         "embedded": embedded,
-        "vlm_pending": vlm_pending,
-        "by_route": {r["route_tag"] or "null": r["n"] for r in by_route},
+        "vlm_pending": stack["jobs_pending"]["vlm_tag"],
+        "tag_stack": stack,
+        "by_route": {k: v["active"] for k, v in routes.items()},
+        "tag_stack_by_route": routes,
     }

@@ -76,7 +76,7 @@
 |---|---|---|
 | M3.1 | `search.py` / FTS: `auto_tagger`, `auto_d1`, `inferred_ja` | タグ検索 |
 | M3.2 | API `tag_sources` 拡張（mockup 同期） | 詳細 JSON |
-| M3.3 | Phase 2.9 バッチ進捗 API/UI | tagger/d1 件数 |
+| M3.3 | Phase 2.9 バッチ進捗 API/UI | ✅ `GET /api/index/status` → `tag_stack`, `tag_stack_by_route` |
 
 ### M4 — 日本語推定（Rollout C）
 

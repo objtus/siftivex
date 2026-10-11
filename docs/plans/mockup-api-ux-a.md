@@ -20,6 +20,6 @@
 - `tag:制服`
 - `tag:1girl tag:画角/全身`
 
-## 次（C）
+## Phase 2 拡張
 
-[scripts/run_pixiv_tagging.sh](../../scripts/run_pixiv_tagging.sh) → tagger 完了後 `d1_batch --route route/pixiv`
+[mockup-phase2.md](mockup-phase2.md) — 索引 Lab · さらに読み込み · 実利用チェックリスト

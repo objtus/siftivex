@@ -25,6 +25,10 @@ const state = {
   retagBusy: false,
   apiTotal: null,
   apiLoadError: null,
+  apiPageLimit: 200,
+  apiLoadingMore: false,
+  indexStatus: null,
+  indexStatusError: null,
 };
 
 const els = {};
@@ -1043,38 +1047,117 @@ function render() {
     els.detailContent.hidden = true;
   }
   renderBulkBar();
+  syncLoadMoreButton();
   applyShellClasses();
   applyLayoutVars();
 }
 
-async function tryLoadApi() {
+function mapApiImageItems(items) {
+  return (items || []).map((item) => ({
+    ...item,
+    thumb_url: `/api/images/${item.image_id}/thumbnail`,
+    preview_url: `/api/images/${item.image_id}/preview`,
+    ocr_text: "",
+  }));
+}
+
+function buildSearchParams(offset) {
+  const params = new URLSearchParams({
+    limit: String(state.apiPageLimit),
+    offset: String(offset),
+  });
+  const qText = queryTextOnly(state.query.replace(/similar_to:\S+/g, "").trim());
+  params.set("q", qText);
+  for (const [tag, s] of Object.entries(state.tagStates)) {
+    if (s === 1) params.append("include_tag", tag);
+    if (s === 2) params.append("exclude_tag", tag);
+  }
+  if (state.route !== "all") params.set("route_tag", state.route);
+  return params;
+}
+
+async function tryLoadApi({ append = false } = {}) {
   if (!state.useApi) return;
+  if (append && state.apiLoadingMore) return;
   state.apiLoadError = null;
+  if (append) state.apiLoadingMore = true;
+  else if (els.btnLoadMore) els.btnLoadMore.disabled = true;
+  const offset = append ? (state.apiImages?.length ?? 0) : 0;
   try {
-    const params = new URLSearchParams({ limit: "200" });
-    const qText = queryTextOnly(state.query.replace(/similar_to:\S+/g, "").trim());
-    params.set("q", qText);
-    for (const [tag, s] of Object.entries(state.tagStates)) {
-      if (s === 1) params.append("include_tag", tag);
-      if (s === 2) params.append("exclude_tag", tag);
-    }
-    if (state.route !== "all") params.set("route_tag", state.route);
-    const res = await fetch(`/api/images?${params}`);
+    const res = await fetch(`/api/images?${buildSearchParams(offset)}`);
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     const data = await res.json();
     state.apiTotal = data.total ?? data.items?.length ?? 0;
-    state.apiImages = data.items.map((item) => ({
-      ...item,
-      thumb_url: `/api/images/${item.image_id}/thumbnail`,
-      preview_url: `/api/images/${item.image_id}/preview`,
-      ocr_text: "",
-    }));
+    const mapped = mapApiImageItems(data.items);
+    if (append && state.apiImages) state.apiImages = [...state.apiImages, ...mapped];
+    else state.apiImages = mapped;
   } catch (err) {
     console.warn("API load failed:", err);
     state.apiLoadError = err.message || String(err);
-    state.apiImages = [];
-    state.apiTotal = 0;
+    if (!append) {
+      state.apiImages = [];
+      state.apiTotal = 0;
+    }
+  } finally {
+    state.apiLoadingMore = false;
+    if (els.btnLoadMore) els.btnLoadMore.disabled = false;
+    syncLoadMoreButton();
   }
+}
+
+function syncLoadMoreButton() {
+  if (!els.btnLoadMore) return;
+  const show =
+    state.useApi &&
+    state.apiImages &&
+    state.apiTotal != null &&
+    state.apiImages.length < state.apiTotal;
+  els.btnLoadMore.hidden = !show;
+  if (show) {
+    const rest = state.apiTotal - state.apiImages.length;
+    els.btnLoadMore.textContent = `さらに読み込み (+${Math.min(rest, state.apiPageLimit)})`;
+  }
+}
+
+function formatRouteStack(label, row) {
+  if (!row) return "";
+  return `${label}: tagger ${row.with_auto_tagger}/${row.active} · d1 ${row.with_auto_d1}/${row.active}`;
+}
+
+function renderIndexStatusPanel() {
+  if (!els.labIndexBody) return;
+  if (state.indexStatusError) {
+    els.labIndexBody.textContent = `⚠ ${state.indexStatusError}`;
+    return;
+  }
+  const d = state.indexStatus;
+  if (!d) {
+    els.labIndexBody.textContent = "「更新」で /api/index/status を取得";
+    return;
+  }
+  const ts = d.tag_stack || {};
+  const by = d.tag_stack_by_route || {};
+  const lines = [
+    `画像 ${d.images_active?.toLocaleString()} · CLIP ${d.embedded?.toLocaleString()}`,
+    `tagger ${ts.with_auto_tagger?.toLocaleString()}/${ts.images_active?.toLocaleString()} · d1 ${ts.with_auto_d1?.toLocaleString()}/${ts.images_active?.toLocaleString()}`,
+    formatRouteStack("pixiv", by["route/pixiv"]),
+    formatRouteStack("under", by["route/under-iphone"]),
+    `キュー tagger ${ts.jobs_pending?.tagger_tag ?? 0} · VLM ${ts.jobs_pending?.vlm_tag ?? 0}`,
+  ].filter(Boolean);
+  els.labIndexBody.textContent = lines.join("\n");
+}
+
+async function refreshIndexStatus() {
+  state.indexStatusError = null;
+  try {
+    const res = await fetch("/api/index/status");
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    state.indexStatus = await res.json();
+  } catch (err) {
+    state.indexStatus = null;
+    state.indexStatusError = err.message || String(err);
+  }
+  renderIndexStatusPanel();
 }
 
 function navDetail(delta) {
@@ -1179,8 +1262,16 @@ function bindEvents() {
     state.useApi = e.target.checked;
     parseQueryTags(state.query);
     await tryLoadApi();
+    if (state.useApi) await refreshIndexStatus();
     render();
   });
+
+  els.btnLoadMore?.addEventListener("click", async () => {
+    await tryLoadApi({ append: true });
+    render();
+  });
+
+  els.labIndexRefresh?.addEventListener("click", () => refreshIndexStatus());
 
   els.tagFilter.addEventListener("input", render);
   els.labToggle.addEventListener("click", () => els.lab.classList.toggle("collapsed"));
@@ -1278,8 +1369,12 @@ function init() {
   els.btnBackExplore = $("#btn-back-explore");
   els.lab = $("#mockup-lab");
   els.labToggle = $("#lab-toggle");
+  els.btnLoadMore = $("#btn-load-more");
+  els.labIndexBody = $("#lab-index-body");
+  els.labIndexRefresh = $("#lab-index-refresh");
 
   bindEvents();
+  void refreshIndexStatus();
   render();
 }
 
