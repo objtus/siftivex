@@ -1,105 +1,151 @@
 # UI 仕様
 
-> **状態**: PC レイアウト再設計中（2026-09-06）
-> **思想**: [ui-philosophy.md](../decisions/ui-philosophy.md) — **資料探し・リスト中心**（必読）
-> **参照**: [blueprint.md](../../blueprint.md) §画面, §UIパーツ, §デバイス・レスポンシブ設計
+> **状態**: 草案（**mockup v3 準拠** · 2026-10-12）  
+> **思想**: [ui-philosophy.md](../decisions/ui-philosophy.md) — 資料探し・リスト中心  
+> **参照実装**: [mockup/](../../mockup/) · [mockup-design-v3.md](../plans/mockup-design-v3.md)  
+> **API**: [api.md](api.md) · **クエリ**: [query-language.md](query-language.md)
 
 ## 概要
 
-画面構成、コンポーネント、状態管理、レスポンシブ分岐の仕様。
-blueprint の UI パーツ一覧を実装レベルに落とす。
+Phase 2 の UI は **探索（一覧）** と **閲覧（詳細）** の二モード。フィルタは左サイドバー常設（狭い画面ではドロワー）。  
+PC レイアウトは **案 B**（探索 ⇔ 閲覧の全画面切替）を採用（OQ-UI-01 解決 · 2026-10-12）。
 
-**PC（Phase 2）**: 資料探し優先。イメージリストと詳細ナビは別レイヤ（[ui-philosophy.md](../decisions/ui-philosophy.md) §二層ナビ）。レイアウト案 A/B/C は未決（OQ-UI-01）。
+React 本番 UI は本仕様と mockup v3 を写す。Phase 3 以降の編集系コンポーネントは末尾に「将来」として記載。
 
-## 画面
+## アプリモード
 
-| 画面 | コンポーネント | 説明 |
+| モード | CSS | 表示 |
 |---|---|---|
-| ListScreen | FilterBar + ImageGrid/Masonry/Table | 一覧画面 |
-| DetailScreen | DetailPane + TagEditor + OcrEditor + SimilarPanel | 詳細画面 |
+| `explore` | `.app.mode-explore` | topbar + sidebar + list-pane |
+| `view` | `.app.mode-view` | topbar + viewer（list/sidebar 非表示） |
 
-類似画像・アルバムは独立画面ではなく、詳細画面内パネル / 一覧画面内フィルタ。
+- 詳細を開くと `view` · `history.pushState` で URL 履歴に積む
+- 戻る: 「一覧へ」· Esc · ブラウザ戻る · `popstate`
 
-## コンポーネント
+## 画面構成（PC · explore）
 
-| コンポーネント | 役割 | 状態 |
-|---|---|---|
-| FilterBar | 検索欄 + タグ/アルバムチップ | TBD |
-| QueryInput | クエリ直接編集 | TBD |
-| TagChip | 循環ボタン（含む/除外/解除） | TBD |
-| TagPicker | タグ一覧（検索・並べ替え） | TBD |
-| ImageCard | 一覧内 1 枚 | TBD |
-| ImageGrid | 均一グリッド表示 | TBD |
-| ImageMasonry | マゾンリー表示 | TBD |
-| ImageTable | 詳細リスト表示 | TBD |
-| DetailPane | 画像本体 + 前後移動 | TBD |
-| TagEditor | タグ追加/削除 | TBD |
-| OcrEditor | OCR 編集 | TBD |
-| SimilarPanel | 類似画像タブ + 結果 | TBD |
-| OriginBreadcrumb | 起点履歴パンくず | TBD |
-| BulkActionBar | 複数選択時の一括操作 | TBD |
+```
+topbar:     ブランド · 検索 · 設定
+sidebar:    ルート · 絞り込み中 · 結果内タグファセット
+list-pane:  件数/履歴 · 並び · レイアウト · サムネサイズ · グリッド/表
+```
 
-## 状態管理
+## 画面構成（PC · view）
 
-### セッション状態
+```
+viewer-bar: 一覧へ · 作品送り ‹ n / N › · （狭い幅）情報トグル
+viewer-stage: 画像 · 左右 edge-nav
+info-panel:   作品コンテキスト · page strip · タグ（source 別）· メタ dl
+```
 
-（TBD: Zustand store 構成）
+## コンポーネント（Phase 2 · mockup v3）
+
+| コンポーネント | DOM / ID | 役割 | 状態 |
+|---|---|---|---|
+| Topbar | `#query-input`, `#btn-settings`, `#btn-filters` | 検索 · 設定 · （compact）フィルタ | ✅ mockup |
+| FilterPane | `#filter-pane`, `#route-list` | ルート · ファセット | ✅ |
+| ActiveFilters | `#chip-row`, `#btn-clear-filters` | 含む/除外チップ | ✅ |
+| TagFacets | `#tag-list`, `#tag-filter` | 結果内集計 · 行クリックで絞り込み | ✅ |
+| ListToolbar | `#sort-select`, `#layout-seg`, `#thumb-size` | 並び · 4 レイアウト · 密度 | ✅ |
+| ImageGrid | `#image-grid`, `.image-card` | サムネのみ（メタ非表示） | ✅ |
+| ImageTable | `#table-wrap`, `#table-body` | ファイル名/ルート/寸法/タグ/スコア | ✅ |
+| Viewer | `#detail-pane`, `#detail-image` | プレビュー · ホイール送り | ✅ |
+| WorkNav | `#page-strip`, `#work-prev/next` | 作品内ページ（データがあるとき） | ✅ |
+| DetailTags | `#detail-tags` | `tag_sources` をレイヤ表示 | ✅ |
+| Settings | `#settings`, `#set-api`, `#theme-seg` | API · 索引 · テーマ | ✅ |
+| OriginBreadcrumb | `#breadcrumb` | 起点履歴（2 件以上で表示） | ✅ |
+
+### Phase 3 以降（mockup v3 では未実装）
+
+| コンポーネント | 役割 |
+|---|---|
+| TagEditor | タグ追加/削除 |
+| OcrEditor | OCR 編集 |
+| BulkActionBar | 一括操作 |
+| SimilarPanel | 類似画像（CLIP 還流） |
+| VlmCaptionPanel | オンデマンドキャプション |
+
+## レイアウト（一覧グリッド）
+
+| `gridLayout` | 説明 |
+|---|---|
+| `justified` | 行高固定・幅は aspect で伸縮 |
+| `masonry` | 最短列へ配置 |
+| `square` | CSS 正方形タイル |
+| `table` | 行リスト（タグプレビュー列あり） |
+
+`thumbSize` 80–280px · localStorage `siftivex.mockup.prefs`。
+
+## 状態管理（mockup · セッション）
 
 | 状態 | 内容 |
 |---|---|
-| イメージリスト | 現在のフィルタ結果（順序付き image_id 集合） |
-| クエリ | 現在のクエリ文字列 |
-| 並び替え | ソートモード |
-| 選択 | 複数選択中の image_id 集合 |
-| 起点履歴 | フィルタ条件スタック（最大 5 件） |
-| 詳細位置 | リスト内の現在インデックス |
+| `appMode` | `explore` \| `view` |
+| `query` | 検索文字列（`tag:` / `-tag:` / 自然言語） |
+| `route` | ルートフィルタ |
+| `tagStates` | タグ → 0 なし / 1 含む / 2 除外 |
+| `originStack` | 起点履歴（クエリ+ルート+scrollTop） |
+| `activeId` / `detailIndex` | 閲覧中 image_id とリスト内位置 |
+| `apiImages` + `offset` | API ページング（200 件/step） |
+| `gridLayout`, `thumbSize`, `sort`, `theme` | 永続 prefs |
 
-### クエリ ⇔ UI 双方向同期
+本番 React では同等 store（Zustand 等）を想定。URL 同期（クエリパラメータ）は Phase 2 完了条件の拡張候補。
 
-（TBD: TagChip 状態 ↔ クエリ文字列の変換ルール → [query-language.md](query-language.md)）
+## クエリ ⇔ UI
+
+- 検索欄: `tag:名前` · `-tag:名前` · 残りは CLIP テキスト（API 側）
+- ファセット / 詳細タグ: クリックで含む · Shift+クリックで除外
+- チップ × で解除 · 「すべて解除」
+- 入力 debounce 後に API 再取得 · Enter で即時
+
+詳細な構文: [query-language.md](query-language.md)（仕様確定は継続）。
 
 ## レスポンシブ
 
-| ブレークポイント | 想定デバイス | レイアウト |
+| 幅 | 挙動 |
+|---|---|
+| >1099px | サイドバー常設 |
+| ≤1099px | サイドバー = 左ドロワー（`#btn-filters`）· scrim |
+| ≤899px | 閲覧: 画像上 + 情報下 · `info-hidden` で画像全面 |
+| ≤599px | ブランド非表示 · 表の列省略 |
+
+`viewport-fit=cover` · safe-area padding on `#app`。
+
+## キーボード（Phase 2 実装分）
+
+| キー | 動作 | 条件 |
 |---|---|---|
-| 狭い（〜500px） | スマホ, iPad Split View | 1 カラム、ボトムシート |
-| 広い（500px〜） | PC, iPad 横向き | 2〜3 ペイン |
+| `/` | 検索欄フォーカス | explore |
+| `←` `→` | 前後の画像 | view |
+| `[` `]` | 作品内ページ | view · 複数ページ時 |
+| `Esc` | オーバーレイ閉じ · 一覧へ | 優先順: overlay → view |
+| ホイール | 前後の画像 | view · `#detail-image` 上 |
 
-### 狭い画面
+Phase 3 予定（仕様のみ）: Space 複数選択 · 一括操作ショートカット等。
 
-- フィルタ → リスト → 詳細を画面遷移
-- 詳細: スワイプで前後移動
-- デフォルト表示: 均一グリッド
+## タグ表示（source）
 
-### 広い画面
+[tags.md](tags.md) に従い **マージせず** ブロック表示:
 
-- 左: フィルタ/タグ一覧、中央: リスト、右/下: 詳細
-- キーボードショートカット有効
-- インライン編集
+- 構造化（`auto_d1`）
+- ファイル名 / pixiv（`filename`）
+- Tagger（`auto_tagger`）
+- 推定 JA / VLM 旧 / 手動（データがあるとき）
 
-## キーボードショートカット
+色点: d1=青 · filename=緑 · tagger=中性（[mockup-design-v3.md](../plans/mockup-design-v3.md)）。
 
-| キー | 動作 | 画面 |
-|---|---|---|
-| ← → | 前後移動 | 詳細 |
-| Esc | リストに戻る | 詳細 |
-| / | 検索欄フォーカス | 一覧 |
-| Space | 複数選択トグル | 一覧 |
-| 1〜9 | よく使うタグトグル | 一覧 |
-| A | アルバムに追加 | 一覧（選択時） |
-| Ctrl/Cmd+Z | 一括操作 Undo | 全体 |
+## パフォーマンス
 
-（TBD: カスタムタグ割り当ての設定 UI）
+- 一覧: IntersectionObserver + サムネ **同時 6 本** · リトライ
+- 詳細: プレビュー img をプリロードして DOM 挿入（二重 fetch 回避）
+- 4 万枚: **全件クライアント保持しない** · API offset ページング（仮想スクロールは本番 UI 課題）
 
-## パフォーマンス要件
+## テーマ
 
-- 仮想スクロール必須（react-window / virtua）
-- IntersectionObserver による遅延読み込み
-- 詳細画面: ホイール → 前後移動、プリフェッチ
-- 画像 3 段階解像度（サムネイル → プレビュー → 原寸）
+`data-theme`: `auto` \| `dark` \| `light` · `color-scheme` 同期。
 
 ## 関連ドキュメント
 
-- [query-language.md](query-language.md) — クエリ構文
-- [api.md](api.md) — データ取得 API
-- [blueprint.md](../../blueprint.md) §詳細画面でのホイール高速切り替え
+- [ui-philosophy.md](../decisions/ui-philosophy.md)
+- [mockup-phase2.md](../plans/mockup-phase2.md) — 検証チェックリスト
+- [phase-2.md](../plans/phase-2.md)

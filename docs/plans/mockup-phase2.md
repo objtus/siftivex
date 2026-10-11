@@ -1,74 +1,98 @@
-# Mockup Phase 2 改善（実利用検証向け）
+# Mockup Phase 2（v3）— 実利用検証
 
-> **目的**: React 本番前に [phase-2.md](phase-2.md) の完了条件を mockup + 実 API で試す。  
-> **前提**: M1/M2 本番済（filename + tagger + d1）。
+> **目的**: React 本番前に [phase-2.md](phase-2.md) の完了条件を **mockup v3 + 実 API** で試す。  
+> **UI 契約**: [ui.md](../specs/ui.md) · [mockup-design-v3.md](mockup-design-v3.md)  
+> **前提**: M0〜M2 本番済（40,305 枚に filename + tagger + d1）。
 
-## 実装済み（2026-10-11）
+## 参照実装
 
-| # | 項目 | 内容 |
-|---|------|------|
-| 1 | **索引ステータス** | Layout Lab →「索引 / タグスタック」· `GET /api/index/status` |
-| 2 | **件数表示** | ヘッダ `表示 / 総数`（API 時） |
-| 3 | **さらに読み込み** | 200 件ずつ `offset` 追加（API max limit） |
-| 4 | 案 A | サーバ検索のみ · `include_tag` · source 別詳細 · NS/flat プレビュー |
+| パス | 内容 |
+|---|---|
+| `mockup/index.html` | シェル（topbar / sidebar / list / viewer / settings） |
+| `mockup/mockup.css` | トークン・ダーク/ライト・レスポンシブ |
+| `mockup/mockup.js` | 状態・API・レイアウト・詳細パイプライン |
+| `mockup/archive/v2/` | 旧 Layout Lab 版（比較用） |
+
+## 実装済み（v3 · 2026-10-12）
+
+| 項目 | 内容 |
+|---|---|
+| 探索 ⇔ 閲覧 | 案 B（`mode-explore` / `mode-view`）· 戻る · Esc · `history.pushState` |
+| 左サイドバー | ルート · 絞り込みチップ · 結果内タグファセット（件数バー） |
+| 一覧 | 行揃え / Masonry / 正方形 / 表 · サムネサイズ · 200 件ページング + 無限スクロール |
+| 詳細 | 作品メタ · ページ strip · **source 別タグ** · ファイル情報 |
+| 設定 | テーマ · API 接続 · `GET /api/index/status` 索引状況 · キー一覧 |
+| モバイル | ≤1099px フィルタドロワー · ≤899px 縦積み + 情報トグル · スワイプ |
+| 安定化 | サムネ同時読み込み制限 · 詳細 race ガード · 画像プリロード挿入 |
+
+**廃止（v2 から）**: Layout Lab · 案 A · 一括選択 · 再タグ · 仮の類似画像。
+
+## 起動
+
+```bash
+make api-dev      # :8787 — 更新後は再起動
+make mockup-dev   # :5199
+```
+
+1. `http://127.0.0.1:5199/` を開く（`file://` 不可）
+2. API 起動中なら自動接続。オフのときは **設定 → API に接続する**
+3. **設定 → 索引の状況 → 更新** で tagger/d1 件数を確認
+
+### リモート開発（Cursor + SSH）
+
+- ブラウザは **メイン PC** · 転送 URL（例: `http://127.0.0.1:5199/`）を使用
+- `ERR_ADDRESS_IN_USE`: 5199 の二重起動 · `ps` で `mockup_server` を確認して再起動
+
+### LAN / Tailscale
+
+`make mockup-dev MOCKUP_HOST=0.0.0.0`（ファイアウォール注意）
 
 ## サムネイルが出ないとき
 
-1. **URL**: `http://127.0.0.1:5199`（`make mockup-dev`）· **Lab → 実 API ON**（`file://` 直開き不可）
-   - **`ERR_ADDRESS_IN_USE`**: 5199 が既に使用中。下記「mockup 再起動」
-   - **リモート開発**（Cursor ポート転送）: 転送先 URL を使う。ローカルで二重転送すると ADDRESS_IN_USE になりやすい
-   - **LAN / Tailscale から直アクセス**: `make mockup-dev MOCKUP_HOST=0.0.0.0`（ファイアウォール注意）
-2. **API**: `make api-dev` が :8787 で動いている · 再起動で一覧 `has_thumbnail` 反映
-3. **1 枚テスト**: グリッドで DevTools → Network → `/api/images/…/thumbnail` が **200** か **404**
-4. **欠損生成**（~300 枚 under 等）:
-   ```bash
-   .venv/bin/python scripts/backfill_thumbnails.py
-   ```
-5. **原画パス**: DB `source_path` が NAS 上に存在するか（Syncthing 未同期だと生成も表示も不可）
+1. Network で `/api/images/…/thumbnail` が **200** か **404**
+2. `make api-dev` 稼働 · 一覧の `has_thumbnail`
+3. 欠損生成: `.venv/bin/python scripts/backfill_thumbnails.py`
+4. DB `source_path` が NAS 上に存在するか（Syncthing 未同期だと不可）
 
 ## 試すチェックリスト
 
 ### 表示
 
-- [ ] グリッドにサムネ（プレースホルダのみのカードは欠損 or 404）
-- [ ] 詳細のプレビュー（`preview.webp` 優先）
-- [ ] 詳細 **タグ（レイヤー別）**: d1 / ファイル名 / Tagger の `<details>`（一覧 API には `tag_sources` なし → 詳細 GET で表示）
+- [ ] グリッドにサムネ（「サムネ未生成」「読み込み失敗」プレースホルダは欠損 or 通信）
+- [ ] 詳細プレビュー（`preview.webp` 優先）
+- [ ] 詳細タグ: 構造化（d1）· ファイル名/pixiv · Tagger 等（詳細 GET の `tag_sources`）
 
-### タグ検索（完了条件）
+### タグ検索（Phase 2 完了条件）
 
-- [ ] **pixiv** · `tag:オリジナル`（filename）· Tagger チップ · `tag:種類/イラスト`
-- [ ] **under** · legacy filename · `tag:"bare legs"` / チップ · d1 `tag:種類/写真`
-- [ ] 空白・括弧タグ · 複数 `include_tag`（チップ複数）
+- [ ] **pixiv** · `tag:オリジナル`（filename）· Tagger チップ · `tag:種類/イラスト`（d1）
+- [ ] **under** · filename · `tag:"bare legs"` 等 · d1 `tag:種類/写真`
+- [ ] ファセット行クリック / Shift+クリック（除外）· チップ複数 · すべて解除
 
 ### 閲覧 UX
 
-- [ ] 3k+ ヒットで「さらに読み込み」→ スクロールしながら詳細前後
-- [ ] 案 B: 探索 ⇔ 閲覧 · Esc · スクロール復元
-- [ ] リスト表示 · タグプレビュー（NS │ flat）
+- [ ] 3k+ ヒットで無限スクロール + 詳細前後（ホイール・矢印）
+- [ ] 一覧へ戻る · スクロール位置 · 選択カード
+- [ ] 複数ページ作品: `[` `]` · page strip · ページ切替後も作品送り
 
 ### 自然言語
 
-- [ ] クエリにテキストのみ（例: `青い髪`）→ CLIP スコア列
+- [ ] クエリにテキストのみ（例: `青い髪`）→ 並び・スコア（表レイアウトのスコア列）
 
-### 索引 Lab
+### 設定 · 索引
 
-- [ ] tagger/d1 件数が DB と一致（pixiv/under 内訳）
-- [ ] 増分 ingest 後 · tagger キュー > 0 の表示
+- [ ] tagger/d1 件数が DB と一致（ルート内訳）
+- [ ] テーマ auto/dark/light が保持される（localStorage）
 
 ## 未着手（Phase 2 本番 UI 向け）
 
 | 優先 | 項目 |
-|------|------|
-| 高 | 仮想スクロール（4 万枚ローカルソートは非現実的 → サーバページング拡張 or 上限表示の明確化） |
-| 中 | FilterBar 専用 UI（source フィルタ `tagger のみ` 等） |
-| 中 | 作品ページ · pixiv コンテキスト（API あり · 要磨き） |
-| 低 | React 2.1 移行 · キーボード `/` フォーカス |
+|---|---|
+| 高 | 大規模一覧方針（仮想スクロール or サーバページングの明文化 · 4 万枚をクライアント保持しない） |
+| 中 | source 限定フィルタ（例: Tagger のみ） |
+| 中 | 作品コンテキスト API の edge case 磨き |
+| 低 | React 2.1 移行（mockup v3 を写す） |
 
-## 起動
+## 関連
 
-```bash
-make api-dev    # :8787 — コード更新後は再起動
-make mockup-dev # :5199
-```
-
-Lab → 実 API ON → 索引「更新」→ pixiv/under で上記チェック。
+- [phase-2.md](phase-2.md) — 完了条件
+- [tag-stack-migration.md](tag-stack-migration.md) — 検証チェックリスト

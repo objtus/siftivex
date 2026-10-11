@@ -1,7 +1,8 @@
 # タグスタック移行計画（VLM auto 廃止 → filename + tagger + d1）
 
-> **日付**: 2026-10-10  
-> **状態**: **計画確定** — 実装は本ドキュメントの順に進める  
+> **日付**: 2026-10-10（進捗更新 2026-10-12）  
+> **状態**: **M0〜M2 完了** · M3 おおむね完了 · M4 未着手  
+> **UI 検証**: [mockup-phase2.md](mockup-phase2.md) · [ui.md](../specs/ui.md)  
 > **関連**: [project-roadmap.md](project-roadmap.md), [model-stack-rollout.md](model-stack-rollout.md), [model-stack-pilot-findings.md](model-stack-pilot-findings.md)
 
 ## 決定
@@ -44,10 +45,10 @@
 
 | # | 作業 | 完了条件 |
 |---|---|---|
-| M0.1 | `data/siftivex.db` バックアップ | ファイルコピー |
-| M0.2 | `DELETE FROM image_tags WHERE source='auto'` | auto 行 0 |
-| M0.3 | pending `vlm_tag` を cancel/delete | pending 0 |
-| M0.4 | （任意）`要再タグ` が filename/manual に残っていれば整理 | 検索ノイズなし |
+| M0.1 | `data/siftivex.db` バックアップ | ✅ |
+| M0.2 | `DELETE FROM image_tags WHERE source='auto'` | ✅ auto 行 0 |
+| M0.3 | pending `vlm_tag` を cancel/delete | ✅ pending 0 |
+| M0.4 | （任意）`要再タグ` が filename/manual に残っていれば整理 | 任意 |
 | M0.5 | スクリプト化 `scripts/purge_vlm_auto_tags.py`（dry-run 付き） | ✅ `scripts/purge_vlm_auto_tags.py` |
 
 **注意**: `effective_tags` / FTS は現状 `auto` を含む。M0 後は **filename 中心**に一時的に戻る。M1 完了まで英語タグ検索は弱い。
@@ -56,11 +57,11 @@
 
 | # | 作業 | 完了条件 |
 |---|---|---|
-| M1.1 | `replace_tags(..., "auto_tagger", ...)` + pilot `tagger_cl` 再利用 | 単体テスト |
+| M1.1 | `replace_tags(..., "auto_tagger", ...)` + pilot `tagger_cl` 再利用 | ✅ |
 | M1.2 | `tagger_batch.py` / `n8n_task.py tagger` | ✅ `scripts/tagger_batch.py` · `n8n_task.py tagger` |
-| M1.3 | under.iphone **~500 枚**試行 → API 詳細・検索 | `auto_tagger` 表示 |
-| M1.4 | pixiv 全件バッチ（夜間） | 36k に tagger 付与 |
-| M1.5 | ingest 増分で tagger ジョブ enqueue | cron 文書化 |
+| M1.3 | under.iphone 試行 → API 詳細・検索 | ✅ |
+| M1.4 | pixiv 全件バッチ | ✅ 40,305 枚 |
+| M1.5 | ingest 増分で tagger ジョブ enqueue | 🟡 cron 文書化・要監査 |
 
 ### M2 — d1 namespace（Rollout B）
 
@@ -68,15 +69,15 @@
 |---|---|---|
 | M2.1 | `auto_d1` 保存、5 軸質問セット | ✅ `scripts/d1_batch.py` · `replace_auto_d1_namespace` |
 | M2.2 | filename タグを d1 state（tagger は渡さない） | ✅ `filename_hint_state` |
-| M2.3 | under.iphone 試行 → 全ルート拡大 | `d1_batch --route …`（**auto_tagger 済み**から） |
+| M2.3 | under.iphone 試行 → 全ルート拡大 | ✅ 40,305 枚 |
 
 ### M3 — 検索・API・UI（Rollout D の一部）
 
 | # | 作業 | 完了条件 |
 |---|---|---|
-| M3.1 | `search.py` / FTS: `auto_tagger`, `auto_d1`, `inferred_ja` | タグ検索 |
-| M3.2 | API `tag_sources` 拡張（mockup 同期） | 詳細 JSON |
-| M3.3 | Phase 2.9 バッチ進捗 API/UI | ✅ `GET /api/index/status` → `tag_stack`, `tag_stack_by_route` |
+| M3.1 | `search.py` / FTS: `auto_tagger`, `auto_d1`, `inferred_ja` | ✅（`inferred_ja` は M4 まで空） |
+| M3.2 | API `tag_sources` 拡張（mockup 同期） | ✅ mockup v3 詳細タグ |
+| M3.3 | Phase 2.9 バッチ進捗 API/UI | ✅ 設定ドロワー · `tag_stack`, `tag_stack_by_route` |
 
 ### M4 — 日本語推定（Rollout C）
 
@@ -123,8 +124,10 @@ VLM    → 手動のみ（caption、任意）
 
 ## 実装後の検証チェックリスト
 
-- [ ] 詳細: filename / auto_tagger / auto_d1 が分離表示
+mockup v3 + 実 API で [mockup-phase2.md](mockup-phase2.md) を実行して確認する。
+
+- [x] 詳細: filename / auto_tagger / auto_d1 が分離表示（mockup v3）
 - [ ] タグ検索: `1girl`（EN）と `制服`（JA filename）の両方
-- [ ] pixiv 画像: filename + auto_tagger（VLM なし）
+- [x] pixiv 画像: filename + auto_tagger（VLM `auto` なし · DB 確認済）
 - [ ] VLM retag API: **caption のみ** or 明示的レガシモード（タグ上書きしない）
-- [ ] cron: VLM 常時実行なし
+- [x] cron: VLM 常時実行なし（pending 0）

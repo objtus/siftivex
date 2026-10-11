@@ -2,6 +2,8 @@
 
 2026-10-11。mockup（素の HTML/JS）を実用ツールとして作り直すための方針メモ。
 
+**契約**: 実装詳細は [ui.md](../specs/ui.md) · 検証は [mockup-phase2.md](mockup-phase2.md) · 全体位置づけは [project-roadmap.md](project-roadmap.md)。
+
 ## ブリーフ（ユーザー回答）
 
 - 用途: 探す ⇔ 見る を行き来する。実用性・機能主義、情報密度は高めでよい

@@ -14,8 +14,8 @@ Siftivex は既存の objtus-server 環境（Docker, llama-swap, n8n, Tailscale�
 [TBD: コンポーネント図]
 
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  React UI   │────▶│  FastAPI    │────▶│  SQLite     │
-│  (Vite)     │     │  (Python)   │     │  + FTS5     │
+│ mockup v3   │────▶│  FastAPI    │────▶│  SQLite     │
+│ (Phase 2)   │     │  (Python)   │     │  + FTS5     │
 └─────────────┘     └──────┬──────┘     └─────────────┘
                            │
                     ┌──────┴──────┐

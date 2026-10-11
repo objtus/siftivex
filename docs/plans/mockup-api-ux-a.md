@@ -1,5 +1,7 @@
 # Mockup 検索 UX 改善（案 A · 2026-10）
 
+> **履歴**: v2 向けメモ。**現行は mockup v3（案 B）** — [mockup-design-v3.md](mockup-design-v3.md) · [ui.md](../specs/ui.md)。案 A レイアウトは `mockup/archive/v2/`。
+
 実 API モード向けの最小変更。React 本番前の **under.iphone 試用**用。
 
 ## 変更内容
