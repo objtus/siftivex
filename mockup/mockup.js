@@ -208,16 +208,42 @@ async function retagActiveImage() {
   }
 }
 
+const NAMESPACE_TAG_RE = /^(種類|画角|アングル|光の方向|人数)\//;
+
+function partitionEffectiveTags(tags) {
+  const ns = [];
+  const flat = [];
+  for (const t of tags || []) {
+    if (NAMESPACE_TAG_RE.test(t)) ns.push(t);
+    else flat.push(t);
+  }
+  return { ns, flat };
+}
+
 function renderDetailTags(item) {
   els.detailTags.innerHTML = "";
   const sources = item?.tag_sources;
   if (sources && state.useApi) {
-    appendTagSourceBlock(els.detailTags, "ファイル名 (JA)", sources.filename, { chipClass: "chip-ja" });
-    appendTagSourceBlock(els.detailTags, "Tagger (EN)", sources.auto_tagger, { chipClass: "chip-en" });
-    appendTagSourceBlock(els.detailTags, "d1 namespace", sources.auto_d1, { chipClass: "chip-ns" });
-    appendTagSourceBlock(els.detailTags, "推定 JA", sources.inferred_ja, { chipClass: "chip-ja" });
-    appendTagSourceBlock(els.detailTags, "VLM (legacy)", sources.auto, { chipClass: "chip-legacy" });
-    appendTagSourceBlock(els.detailTags, "手動", sources.manual_added, { chipClass: "chip-manual" });
+    const legend = document.createElement("p");
+    legend.className = "detail-tag-legend";
+    legend.textContent =
+      "レイヤー別: d1＝構造化（種類/画角…）、Tagger＝Danbooru EN 平坦タグ。一覧の tags はこれらをマージした effective。";
+    els.detailTags.appendChild(legend);
+    appendTagSourceBlock(els.detailTags, "d1 — 構造化 (NS)", sources.auto_d1, {
+      chipClass: "chip-ns",
+      open: true,
+    });
+    appendTagSourceBlock(els.detailTags, "ファイル名 / pixiv (JA)", sources.filename, {
+      chipClass: "chip-ja",
+      open: true,
+    });
+    appendTagSourceBlock(els.detailTags, "Tagger — 平坦 (EN)", sources.auto_tagger, {
+      chipClass: "chip-en",
+      open: false,
+    });
+    appendTagSourceBlock(els.detailTags, "推定 JA", sources.inferred_ja, { chipClass: "chip-ja", open: false });
+    appendTagSourceBlock(els.detailTags, "VLM (legacy)", sources.auto, { chipClass: "chip-legacy", open: false });
+    appendTagSourceBlock(els.detailTags, "手動", sources.manual_added, { chipClass: "chip-manual", open: false });
     return;
   }
   appendTagChips(els.detailTags, item?.tags || []);
@@ -228,7 +254,7 @@ function appendTagSourceBlock(container, label, tags, opts = {}) {
   if (!list.length) return;
   const block = document.createElement("details");
   block.className = "tag-source-block";
-  block.open = opts.open !== false;
+  block.open = opts.open === true;
   const head = document.createElement("summary");
   head.className = "tag-source-label";
   head.textContent = `${label} (${list.length})`;
@@ -260,12 +286,23 @@ function ocrExcerpt(item) {
   return t.length > 40 ? `${t.slice(0, 40)}…` : t;
 }
 
-function listTagsPreview(item, max = 5) {
+function listTagsPreview(item, max = 4) {
   const tags = item?.tags || [];
   if (!tags.length) return "—";
-  const head = tags.slice(0, max);
-  const rest = tags.length - head.length;
-  return rest > 0 ? `${head.join(", ")} +${rest}` : head.join(", ");
+  const { ns, flat } = partitionEffectiveTags(tags);
+  const parts = [];
+  if (ns.length) {
+    const head = ns.slice(0, Math.min(3, max));
+    const nsRest = ns.length - head.length;
+    parts.push(`NS: ${head.join(" · ")}${nsRest > 0 ? ` +${nsRest}` : ""}`);
+  }
+  if (flat.length) {
+    const flatMax = ns.length ? Math.max(2, max - 1) : max;
+    const head = flat.slice(0, flatMax);
+    const flatRest = flat.length - head.length;
+    parts.push(`${head.join(", ")}${flatRest > 0 ? ` +${flatRest}` : ""}`);
+  }
+  return parts.join(" │ ") || "—";
 }
 
 function filteredImages() {

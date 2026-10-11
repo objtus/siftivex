@@ -1151,6 +1151,13 @@ a {
   margin: 0 4px 4px 0;
 }
 
+.detail-tag-legend {
+  margin: 0 0 0.65rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
 .tag-source-block {
   margin-top: 8px;
   border: 1px solid var(--border);

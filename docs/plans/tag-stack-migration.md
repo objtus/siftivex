@@ -67,7 +67,7 @@
 | # | 作業 | 完了条件 |
 |---|---|---|
 | M2.1 | `auto_d1` 保存、5 軸質問セット | ✅ `scripts/d1_batch.py` · `replace_auto_d1_namespace` |
-| M2.2 | tagger top-N を d1 state | ✅ `tagger_hint_state` |
+| M2.2 | filename タグを d1 state（tagger は渡さない） | ✅ `filename_hint_state` |
 | M2.3 | under.iphone 試行 → 全ルート拡大 | `d1_batch --route …`（**auto_tagger 済み**から） |
 
 ### M3 — 検索・API・UI（Rollout D の一部）

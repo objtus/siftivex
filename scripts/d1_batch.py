@@ -19,7 +19,11 @@ from siftivex.gpu_env import apply_d1_gpu_config  # noqa: E402
 
 apply_d1_gpu_config(_early.get("d1") or {})
 
-from siftivex.d1_namespace import namespace_tags_from_d1, tagger_hint_state  # noqa: E402
+from siftivex.d1_namespace import (  # noqa: E402
+    d1_state_text_from_config,
+    is_under_legacy_filename_for_d1,
+    namespace_tags_from_d1,
+)
 from siftivex.db import get_connection  # noqa: E402
 from siftivex.paths import DEFAULT_DB_PATH  # noqa: E402
 from siftivex.pilot.d1_questions import build_d1_question_set  # noqa: E402
@@ -45,9 +49,19 @@ def main() -> int:
     parser.add_argument("--commit-every", type=int, default=10)
     parser.add_argument("--retag", action="store_true", help="Overwrite existing auto_d1")
     parser.add_argument(
+        "--require-legacy-filename",
+        action="store_true",
+        help="Only images with under-style filename tags (ID_tag-tag.ext)",
+    )
+    parser.add_argument(
+        "--no-require-filename",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--no-require-tagger",
         action="store_true",
-        help="Process images without auto_tagger hints",
+        help=argparse.SUPPRESS,
     )
     args = parser.parse_args()
 
@@ -56,6 +70,7 @@ def main() -> int:
     cfg = load_config(args.config)
     d1_cfg = cfg.get("d1") or {}
     min_prob = float(d1_cfg.get("min_choice_prob", 0.4))
+    hint_source = str(d1_cfg.get("state_hint_source", "filename")).strip().lower()
 
     try:
         runner = D1Runner(
@@ -70,7 +85,8 @@ def main() -> int:
 
     questions = build_d1_question_set(cfg, include_namespace=True)
     print(
-        f"d1 device={runner._device} questions={len(questions)} min_prob={min_prob}",
+        f"d1 device={runner._device} questions={len(questions)} min_prob={min_prob} "
+        f"state_hint_source={hint_source}",
         file=sys.stderr,
     )
 
@@ -88,13 +104,6 @@ def main() -> int:
           AND NOT EXISTS (
             SELECT 1 FROM image_tags t
             WHERE t.image_id = i.image_id AND t.source = 'auto_d1'
-          )
-        """
-    if not args.no_require_tagger:
-        query += """
-          AND EXISTS (
-            SELECT 1 FROM image_tags t
-            WHERE t.image_id = i.image_id AND t.source = 'auto_tagger'
           )
         """
     query += " ORDER BY i.image_id"
@@ -117,8 +126,16 @@ def main() -> int:
             if not is_readable_image(path):
                 skip += 1
                 continue
+            if args.require_legacy_filename and not is_under_legacy_filename_for_d1(path.name):
+                skip += 1
+                continue
             try:
-                state = tagger_hint_state(conn, image_id)
+                state = d1_state_text_from_config(
+                    conn,
+                    image_id,
+                    d1_cfg,
+                    file_name=Path(row["source_path"]).name,
+                )
                 out = runner.decide(path, questions, state_text=state)
                 ns_tags = namespace_tags_from_d1(out, min_choice_prob=min_prob)
                 replace_auto_d1_namespace(conn, image_id, ns_tags)
