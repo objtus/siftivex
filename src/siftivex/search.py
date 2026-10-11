@@ -16,8 +16,9 @@ from siftivex.thumbnails import thumbnail_dir
 _TAG_SOURCES_SQL = "('filename', 'auto_tagger', 'auto_d1', 'inferred_ja', 'manual_added')"
 
 # Unquoted value is \S+ only; use tag:"black hair" for spaced Danbooru-style tags.
+# tag:=… = literal tag (skip Tag Bridge). See docs/specs/query-language.md
 TAG_PATTERN = re.compile(
-    r'(-?)tag:(?:"((?:\\.|[^"\\])*)"|\'((?:\\.|[^\'\\])*)\'|(\S+))',
+    r'(-?)tag:(=)?(?:"((?:\\.|[^"\\])*)"|\'((?:\\.|[^\'\\])*)\'|(\S+))',
     re.IGNORECASE,
 )
 
@@ -26,6 +27,8 @@ TAG_PATTERN = re.compile(
 class ParsedQuery:
     include_tags: list[str] = field(default_factory=list)
     exclude_tags: list[str] = field(default_factory=list)
+    """Include tokens that use tag:= (no bridge expansion)."""
+    literal_include: set[str] = field(default_factory=set)
     text: str = ""
 
 
@@ -71,7 +74,12 @@ def merge_parsed_query(
         if tag and tag not in seen_exc:
             seen_exc.add(tag)
             exclude.append(tag)
-    return ParsedQuery(include_tags=include, exclude_tags=exclude, text=parsed.text)
+    return ParsedQuery(
+        include_tags=include,
+        exclude_tags=exclude,
+        literal_include=set(parsed.literal_include),
+        text=parsed.text,
+    )
 
 
 def parse_query(raw: str) -> ParsedQuery:
@@ -81,13 +89,16 @@ def parse_query(raw: str) -> ParsedQuery:
     for m in TAG_PATTERN.finditer(raw):
         text_parts.append(raw[last : m.start()])
         last = m.end()
-        tag = _unescape_quoted_tag(m.group(2) or m.group(3) or m.group(4) or "")
+        strict = m.group(2) == "="
+        tag = _unescape_quoted_tag(m.group(3) or m.group(4) or m.group(5) or "")
         if not tag:
             continue
         if m.group(1) == "-":
             parsed.exclude_tags.append(tag)
         else:
             parsed.include_tags.append(tag)
+            if strict:
+                parsed.literal_include.add(tag)
     text_parts.append(raw[last:])
     parsed.text = " ".join("".join(text_parts).split())
     return parsed
@@ -132,6 +143,9 @@ def _tag_exists_fragment(
 def _include_groups(parsed: ParsedQuery, bridge: TagBridgeDoc | None) -> list[list[TagBridgeMember]]:
     groups: list[list[TagBridgeMember]] = []
     for token in parsed.include_tags:
+        if token in parsed.literal_include:
+            groups.append([TagBridgeMember(source="", tag=token)])
+            continue
         expanded = expand_include_token(token, bridge)
         if expanded:
             groups.append(expanded)

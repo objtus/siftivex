@@ -88,7 +88,9 @@
 - フィクスチャ DB + 临时 bridge JSON
 - 画像 A: filename のみ 制服 · 画像 B: tagger のみ serafuku · 画像 C: 無関係
 - `tag:制服`（bridge）→ A,B ヒット
-- `tag:serafuku`（bridge 無し）→ B のみ
+- `tag:serafuku`（member 文字列・非 label）→ B のみ（OR 展開しない）
+- `tag:=serafuku`（厳密）→ B のみ · `tag:=制服` → filename の A のみ
+- UI クリック `school uniform（制服）` → クエリ `tag:制服`
 - `tag:制服` + `tag:種類/イラスト` → AND
 
 **手動**: 既存 40k DB に example 1 エントリを PUT → mockup/curl

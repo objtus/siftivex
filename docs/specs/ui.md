@@ -93,12 +93,13 @@ info-panel:   作品コンテキスト · page strip · タグ（source 別）·
 
 ## クエリ ⇔ UI
 
-- 検索欄: `tag:名前` · `-tag:名前` · 残りは CLIP テキスト（API 側）
-- ファセット / 詳細タグ: クリックで含む · Shift+クリックで除外
-- チップ × で解除 · 「すべて解除」
-- 入力 debounce 後に API 再取得 · Enter で即時
+- **正本**: 検索欄のクエリ文字列 → API は `GET /api/images?q=…` にそのまま渡す（同じ文字列なら同じ結果）。
+- 検索欄: `tag:名前`（Tag Bridge ラベル可）· `tag:=名前`（厳密・bridge 無視）· `-tag:名前` · 残りは CLIP テキスト
+- **Tag Bridge**: 詳細 / ファセットで bridge **member** をクリック → クエリには **`tag:<代表label>`** を載せる（`school uniform` 単体は載せない）。絞り込み中は member チップも label 条件でハイライト。
+- クリック: 含む · Shift+クリック: 除外 · チップ × / 「すべて解除」
+- debounce 後に API 再取得 · Enter で即時
 
-詳細な構文: [query-language.md](query-language.md)（仕様確定は継続）。
+詳細: [query-language.md](query-language.md) · [tag-bridge.md](tag-bridge.md)
 
 ## レスポンシブ
 

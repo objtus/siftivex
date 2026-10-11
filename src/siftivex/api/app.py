@@ -86,6 +86,7 @@ def list_images(
                 "raw": q,
                 "include_tags": parsed.parsed.include_tags,
                 "exclude_tags": parsed.parsed.exclude_tags,
+                "literal_include": sorted(parsed.parsed.literal_include),
                 "text": parsed.parsed.text,
             },
             "items": [image_to_dict(conn, hit) for hit in parsed.items],

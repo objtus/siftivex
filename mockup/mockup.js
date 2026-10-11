@@ -58,6 +58,8 @@ const state = {
   apiLoadError: null,
   tagBridge: { entries: [], dirty: false, serverUpdatedAt: null },
   tagBridgeMemberLabels: {},
+  /** Include/exclude keys that use tag:= (no bridge expansion). */
+  tagStateLiteral: new Set(),
   apiPageLimit: 200,
   apiLoadingMore: false,
   indexStatus: null,
@@ -253,6 +255,7 @@ function setTagFilter(tag, s) {
   if (s === 0) {
     if (TAGS.includes(tag) && !state.useApi) state.tagStates[tag] = 0;
     else delete state.tagStates[tag];
+    state.tagStateLiteral.delete(tag);
   } else {
     state.tagStates[tag] = s;
   }
@@ -271,16 +274,66 @@ function tagNeedsQuotes(tag) {
   return /[\s()"']/.test(tag);
 }
 
-function formatTagQueryToken(tag, exclude) {
-  const prefix = exclude ? "-tag:" : "tag:";
+function formatTagQueryToken(tag, exclude, { strict = false } = {}) {
+  let prefix = exclude ? "-tag:" : "tag:";
+  if (strict) prefix += "=";
   if (!tagNeedsQuotes(tag)) return `${prefix}${tag}`;
   const escaped = tag.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   return `${prefix}"${escaped}"`;
 }
 
+function bridgeLabelForMember(source, tag) {
+  return state.tagBridgeMemberLabels[`${source}\0${tag}`] || null;
+}
+
+function bridgeLabelForFlatTag(tag) {
+  for (const entry of state.tagBridge.entries) {
+    const label = (entry.label || "").trim();
+    if (!label) continue;
+    for (const m of entry.members || []) {
+      if ((m.tag || "").trim() === tag) return label;
+    }
+  }
+  return null;
+}
+
+/** Filter key for UI clicks: bridge members map to representative label. */
+function filterKeyForTagClick(tag, source) {
+  const label = source != null ? bridgeLabelForMember(source, tag) : bridgeLabelForFlatTag(tag);
+  return label || tag;
+}
+
+/** 0 / 1 / 2 — includes bridge-expanded active filters on member chips. */
+function tagFilterState(tag, source = null) {
+  for (const [key, s] of Object.entries(state.tagStates)) {
+    if (s === 0) continue;
+    if (state.tagStateLiteral.has(key)) {
+      if (key === tag) return s;
+      continue;
+    }
+    if (key === tag) return s;
+  }
+  for (const [key, s] of Object.entries(state.tagStates)) {
+    if (s === 0 || state.tagStateLiteral.has(key)) continue;
+    const entry = state.tagBridge.entries.find((e) => (e.label || "").trim() === key);
+    if (!entry) continue;
+    for (const m of entry.members || []) {
+      if ((m.tag || "").trim() !== tag) continue;
+      if (source != null && m.source !== source) continue;
+      return s;
+    }
+  }
+  return 0;
+}
+
+function toggleTagFilterFromUi(tag, source, exclude) {
+  const key = filterKeyForTagClick(tag, source);
+  toggleTagFilter(key, exclude);
+}
+
 function stripTagTokensFromQuery(q) {
   return q
-    .replace(/(-?)tag:(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s]+)/gi, "")
+    .replace(/(-?)tag:(=?)("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s]+)/gi, "")
     .replace(/similar_to:\S+/g, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -293,8 +346,9 @@ function queryTextOnly(q) {
 function syncQueryFromTags() {
   const parts = [];
   for (const [tag, s] of Object.entries(state.tagStates)) {
-    if (s === 1) parts.push(formatTagQueryToken(tag, false));
-    if (s === 2) parts.push(formatTagQueryToken(tag, true));
+    const strict = state.tagStateLiteral.has(tag);
+    if (s === 1) parts.push(formatTagQueryToken(tag, false, { strict }));
+    if (s === 2) parts.push(formatTagQueryToken(tag, true, { strict }));
   }
   const text = queryTextOnly(state.query);
   state.query = [...parts, text].filter(Boolean).join(" ").trim();
@@ -307,6 +361,7 @@ function clearTagFilters() {
     if (TAGS.includes(tag) && !state.useApi) state.tagStates[tag] = 0;
     else delete state.tagStates[tag];
   }
+  state.tagStateLiteral.clear();
   syncQueryFromTags();
   commitQueryToOrigin();
   void refreshList();
@@ -345,14 +400,17 @@ function parseQueryTags(q) {
   state.tagStates = state.useApi
     ? {}
     : Object.fromEntries(TAGS.map((t) => [t, 0]));
-  const re = /(-?)tag:(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([^\s]+))/gi;
+  state.tagStateLiteral = new Set();
+  const re = /(-?)tag:(=?)("((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([^\s]+))/gi;
   let m;
   while ((m = re.exec(q)) !== null) {
     const excl = m[1] === "-";
-    let tag = m[2] ?? m[3] ?? m[4] ?? "";
+    const strict = m[2] === "=";
+    let tag = m[3] ?? m[4] ?? m[5] ?? "";
     tag = tag.replace(/\\"/g, '"').replace(/\\'/g, "'");
     if (!tag) continue;
     state.tagStates[tag] = excl ? 2 : 1;
+    if (strict && !excl) state.tagStateLiteral.add(tag);
   }
   state.query = q;
 }
@@ -509,11 +567,12 @@ function appendTagChips(container, tags, { source = null } = {}) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "tag-chip";
-    if (state.tagStates[t] === 1) btn.classList.add("include");
-    if (state.tagStates[t] === 2) btn.classList.add("exclude");
+    const fs = tagFilterState(t, source);
+    if (fs === 1) btn.classList.add("include");
+    if (fs === 2) btn.classList.add("exclude");
     btn.textContent = chipDisplayText(t, source);
     btn.title = "クリックで絞り込み / Shift+クリックで除外";
-    btn.addEventListener("click", (e) => toggleTagFilter(t, e.shiftKey));
+    btn.addEventListener("click", (e) => toggleTagFilterFromUi(t, source, e.shiftKey));
     container.appendChild(btn);
   }
 }
@@ -848,7 +907,7 @@ function computeFacets(list) {
 }
 
 function facetRow(row, max) {
-  const s = state.tagStates[row.tag] ?? 0;
+  const s = tagFilterState(row.tag, null);
   const el = document.createElement("div");
   el.className = `facet-row${s === 1 ? " include" : s === 2 ? " exclude" : ""}`;
   el.style.setProperty("--p", `${max ? Math.round((row.count / max) * 100) : 0}%`);
@@ -859,7 +918,7 @@ function facetRow(row, max) {
   name.title = `${row.tag}（クリックで絞り込み / Shift+クリックで除外）`;
   el.addEventListener("click", (e) => {
     if (e.target.closest(".facet-x")) return;
-    toggleTagFilter(row.tag, e.shiftKey);
+    toggleTagFilterFromUi(row.tag, null, e.shiftKey);
   });
   const count = document.createElement("span");
   count.className = "facet-count";
@@ -870,7 +929,7 @@ function facetRow(row, max) {
   x.setAttribute("aria-label", `${row.tag} を除外`);
   x.title = "除外";
   x.textContent = "−";
-  x.addEventListener("click", () => toggleTagFilter(row.tag, true));
+  x.addEventListener("click", () => toggleTagFilterFromUi(row.tag, null, true));
   el.append(name, count, x);
   return el;
 }
@@ -941,7 +1000,9 @@ function renderChips() {
     chip.title = s === 2 ? `${tag} を除外中` : `${tag} を含む`;
     const text = document.createElement("span");
     text.className = "chip-text";
-    text.textContent = tag;
+    text.textContent = formatTagQueryToken(tag, s === 2, {
+      strict: state.tagStateLiteral.has(tag),
+    });
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "x";
@@ -1624,12 +1685,7 @@ function buildSearchParams(offset) {
     limit: String(state.apiPageLimit),
     offset: String(offset),
   });
-  const qText = queryTextOnly(state.query.replace(/similar_to:\S+/g, "").trim());
-  params.set("q", qText);
-  for (const [tag, s] of Object.entries(state.tagStates)) {
-    if (s === 1) params.append("include_tag", tag);
-    if (s === 2) params.append("exclude_tag", tag);
-  }
+  params.set("q", state.query.replace(/similar_to:\S+/g, "").trim());
   if (state.route !== "all") params.set("route_tag", state.route);
   return params;
 }

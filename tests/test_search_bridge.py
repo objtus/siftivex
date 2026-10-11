@@ -75,3 +75,11 @@ def test_bridge_or_search(db_conn: sqlite3.Connection, tmp_path: Path):
     only_en = search_by_tags(db_conn, parse_query("tag:serafuku"), bridge=bridge)
     assert only_en.total == 1
     assert only_en.items[0].image_id == rb.image_id
+
+    strict_en = search_by_tags(db_conn, parse_query("tag:=serafuku"), bridge=bridge)
+    assert strict_en.total == 1
+    assert strict_en.items[0].image_id == rb.image_id
+
+    strict_label = search_by_tags(db_conn, parse_query("tag:=制服"), bridge=bridge)
+    assert strict_label.total == 1
+    assert strict_label.items[0].image_id == ra.image_id

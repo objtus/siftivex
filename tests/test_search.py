@@ -45,6 +45,13 @@ def test_parse_query_quoted_tagger_tags():
     assert q.text == "青い髪"
 
 
+def test_parse_query_literal_tag():
+    q = parse_query('tag:=serafuku tag:制服 tag:="school uniform"')
+    assert q.include_tags == ["serafuku", "制服", "school uniform"]
+    assert q.literal_include == {"serafuku", "school uniform"}
+    assert q.text == ""
+
+
 def test_merge_parsed_query_extra_include():
     base = parse_query("tag:1girl")
     merged = merge_parsed_query(base, extra_include=["bare legs", "1girl"])

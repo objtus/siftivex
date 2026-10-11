@@ -70,13 +70,13 @@
 
 既存 `GET /api/images` の tag 条件に、bridge 展開を **サーバー内部**で適用する。
 
-1. クエリ文字列・`include_tag` の各トークン `T` について:
-   - bridge に `label === T` のエントリがあれば、`members` を **include 集合に OR 追加**（重複除去）。
-   - エントリが無ければ、従来どおり `T` を 1 タグとして扱う。
-2. `source` 付き member は「その source のタグのみ一致」でフィルタ（FTS/SQL 側で source 条件）。
-3. **複数 include トークン**は従来どおり **AND**（bridge 展開後も AND）。
+1. クエリ `q` 内の各 include トークンについて:
+   - **`tag:=T`（厳密）** — bridge 無視。`T` を 1 タグ（全 source）。
+   - **`tag:T`（通常）** — `label === T` のエントリがあれば `members` を **1 OR グループ**に展開。無ければ 1 タグ。
+2. `source` 付き member は SQL で source 条件付き一致。
+3. 複数 include は展開 **後** も **AND**。
 
-（mockup は `tag:制服` を parse 後 `include_tag` に載せるか、`q` に残すかは mockup 実装時に統一。展開は API が担う。）
+mockup は **`q` にクエリ全文**（`tag:` / `tag:=` 含む）を送る。UI クリックは **`tag:<label>`** のみ（[query-language.md](query-language.md)）。
 
 ## 表示（mockup / UI）
 
