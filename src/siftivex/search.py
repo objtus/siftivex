@@ -7,7 +7,9 @@ import sqlite3
 from dataclasses import dataclass, field
 
 from siftivex.embeddings import Embedder, EmbeddingStore
+from siftivex.paths import DEFAULT_THUMBNAILS_DIR
 from siftivex.tags_db import effective_tags
+from siftivex.thumbnails import thumbnail_dir
 
 # Unquoted value is \S+ only; use tag:"black hair" for spaced Danbooru-style tags.
 TAG_PATTERN = re.compile(
@@ -258,6 +260,9 @@ def search_images(
 
 
 def image_to_dict(conn: sqlite3.Connection, hit: SearchHit) -> dict:
+    base = thumbnail_dir(hit.image_id, DEFAULT_THUMBNAILS_DIR)
+    thumb_path = base / "thumb.webp"
+    preview_path = base / "preview.webp"
     return {
         "image_id": hit.image_id,
         "file_name": hit.file_name,
@@ -266,4 +271,6 @@ def image_to_dict(conn: sqlite3.Connection, hit: SearchHit) -> dict:
         "height": hit.height,
         "tags": effective_tags(conn, hit.image_id),
         "score": hit.score,
+        "has_thumbnail": thumb_path.is_file(),
+        "has_preview": preview_path.is_file(),
     }

@@ -91,8 +91,9 @@ api-dev:
 	$(PY) -m siftivex.api.main --host 127.0.0.1 --port 8787
 
 MOCKUP_PORT ?= 5199
+MOCKUP_HOST ?= 127.0.0.1
 mockup-dev:
-	$(PY) scripts/mockup_server.py --port $(MOCKUP_PORT)
+	$(PY) scripts/mockup_server.py --host $(MOCKUP_HOST) --port $(MOCKUP_PORT)
 
 N8N_LIMIT ?= 500
 n8n-status:

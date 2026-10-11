@@ -33,9 +33,172 @@ const state = {
 
 const els = {};
 
-let detailRenderGen = 0;
-let detailContextTimer = null;
-const detailImageCache = new Map();
+const RETRY_DELAYS_MS = [400, 1200];
+const DETAIL_SETTLE_MS = 120;
+const CACHE_LIMIT = 400;
+
+let detailSettleTimer = null;
+/** Last list position shown in detail; work pages outside the list navigate relative to it. */
+let lastListIndex = -1;
+let wheelNavRaf = null;
+let wheelNavSteps = 0;
+/** @type {Map<string, Promise<object|null>>} */
+const detailFetchInflight = new Map();
+/** @type {Map<string, object>} */
+const detailDataCache = new Map();
+/** @type {Map<string, object[]>} */
+const workPagesCache = new Map();
+/** @type {Map<string, Promise<HTMLImageElement|null>>} */
+const imageLoadCache = new Map();
+/** @type {Map<string, HTMLImageElement>} decoded elements, inserted as-is so display never refetches */
+const loadedImages = new Map();
+
+function isActiveDetail(imageId) {
+  return !!imageId && state.activeId === imageId;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function cachePut(map, key, value) {
+  map.delete(key);
+  map.set(key, value);
+  if (map.size > CACHE_LIMIT) map.delete(map.keys().next().value);
+}
+
+/** Returns parsed JSON, `null` for 404, throws after retries on network / 5xx errors. */
+async function fetchJsonRetry(url) {
+  let lastErr = null;
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
+    if (attempt > 0) await sleep(RETRY_DELAYS_MS[attempt - 1]);
+    try {
+      const res = await fetch(url);
+      if (res.status === 404) return null;
+      if (res.ok) return await res.json();
+      lastErr = new Error(`${res.status} ${res.statusText}`);
+      if (res.status < 500) break;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr ?? new Error("fetch failed");
+}
+
+function withRetryParam(src, attempt) {
+  return `${src}${src.includes("?") ? "&" : "?"}r=${attempt}`;
+}
+
+function loadImageOnce(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.onload = () => resolve(img.naturalWidth > 0 ? img : null);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+/** Resolves to a fully loaded <img> (original URL or a retry variant), or null. */
+function loadImage(src) {
+  const hit = imageLoadCache.get(src);
+  if (hit) return hit;
+  const p = (async () => {
+    for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
+      if (attempt > 0) await sleep(RETRY_DELAYS_MS[attempt - 1]);
+      const img = await loadImageOnce(attempt === 0 ? src : withRetryParam(src, attempt));
+      if (img) {
+        cachePut(loadedImages, src, img);
+        return img;
+      }
+    }
+    return null;
+  })();
+  cachePut(imageLoadCache, src, p);
+  p.then((img) => {
+    if (!img) imageLoadCache.delete(src);
+  });
+  return p;
+}
+
+// List thumbnails: only near-viewport images, at most THUMB_CONCURRENCY in flight.
+// A cold-cache burst of ~200 requests through SSH port forwarding drops connections.
+const THUMB_CONCURRENCY = 6;
+const THUMB_RETRY_MS = [500, 1500, 4000];
+const thumbQueue = [];
+let thumbActive = 0;
+let thumbGen = 0;
+let thumbObserver = null;
+/** @type {WeakMap<HTMLImageElement, {src: string, onGiveUp: () => void}>} */
+const thumbJobs = new WeakMap();
+
+function queueThumb(img, attempt = 0) {
+  thumbQueue.push({ img, attempt });
+  pumpThumbQueue();
+}
+
+function pumpThumbQueue() {
+  while (thumbActive < THUMB_CONCURRENCY && thumbQueue.length) {
+    const { img, attempt } = thumbQueue.shift();
+    const job = thumbJobs.get(img);
+    if (!job || !img.isConnected) continue;
+    thumbActive += 1;
+    const gen = thumbGen;
+    const finish = (ok) => {
+      img.onload = null;
+      img.onerror = null;
+      if (gen !== thumbGen) return;
+      thumbActive -= 1;
+      if (!ok && img.isConnected) {
+        if (attempt < THUMB_RETRY_MS.length) {
+          setTimeout(() => queueThumb(img, attempt + 1), THUMB_RETRY_MS[attempt]);
+        } else {
+          job.onGiveUp();
+        }
+      }
+      pumpThumbQueue();
+    };
+    img.onload = () => finish(true);
+    img.onerror = () => finish(false);
+    img.src = attempt ? withRetryParam(job.src, attempt) : job.src;
+  }
+}
+
+function resetThumbObserver(root) {
+  thumbObserver?.disconnect();
+  thumbQueue.length = 0;
+  thumbActive = 0;
+  thumbGen += 1;
+  thumbObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        thumbObserver.unobserve(entry.target);
+        queueThumb(entry.target);
+      }
+    },
+    { root, rootMargin: "400px 0px" },
+  );
+}
+
+function observeThumb(img, src, onGiveUp) {
+  thumbJobs.set(img, { src, onGiveUp });
+  thumbObserver.observe(img);
+}
+
+/** Retry a DOM <img> a few times before giving up (transient proxy / tunnel failures). */
+function attachImgRetry(img, src, onGiveUp) {
+  let attempt = 0;
+  img.addEventListener("error", () => {
+    if (attempt >= RETRY_DELAYS_MS.length) {
+      onGiveUp();
+      return;
+    }
+    const delay = RETRY_DELAYS_MS[attempt];
+    attempt += 1;
+    setTimeout(() => {
+      if (img.isConnected) img.src = withRetryParam(src, attempt);
+    }, delay);
+  });
+}
 
 function listScrollEl() {
   return state.viewMode === "grid" ? els.grid : els.tableWrap;
@@ -190,6 +353,7 @@ async function retagActiveImage() {
     }
     const data = await res.json();
     patchApiImageItem(data);
+    detailDataCache.delete(data.image_id);
     const list = filteredImages();
     renderDetail(list);
     renderListOnly(list);
@@ -444,17 +608,7 @@ function pushSimilarReflux(imageId) {
   render();
 }
 
-function renderThumb(el, item, mode = "grid") {
-  if (mode === "table") el.className = "table-thumb-cell";
-  if (item.thumb_url) {
-    const img = document.createElement("img");
-    img.className = mode === "table" ? "table-thumb" : "thumb";
-    img.src = item.thumb_url;
-    img.alt = item.file_name;
-    img.loading = "lazy";
-    el.appendChild(img);
-    return;
-  }
+function appendThumbPlaceholder(el, item, mode) {
   const ph = document.createElement("div");
   if (mode === "table") {
     ph.className = "table-thumb-ph";
@@ -463,10 +617,29 @@ function renderThumb(el, item, mode = "grid") {
     ph.className = "thumb-placeholder";
     if (item.thumbStyle?.background) ph.style.background = item.thumbStyle.background;
   }
+  ph.title = item.has_thumbnail === false ? "サムネ未生成" : "読み込み失敗";
   el.appendChild(ph);
 }
 
+function renderThumb(el, item, mode = "grid") {
+  if (mode === "table") el.className = "table-thumb-cell";
+  if (item.thumb_url) {
+    const img = document.createElement("img");
+    img.className = mode === "table" ? "table-thumb" : "thumb";
+    img.alt = "";
+    img.title = item.file_name;
+    el.appendChild(img);
+    observeThumb(img, item.thumb_url, () => {
+      img.remove();
+      appendThumbPlaceholder(el, item, mode);
+    });
+    return;
+  }
+  appendThumbPlaceholder(el, item, mode);
+}
+
 function renderGrid(list) {
+  resetThumbObserver(els.grid);
   els.grid.innerHTML = "";
   for (const item of list) {
     const card = document.createElement("article");
@@ -494,6 +667,7 @@ function renderGrid(list) {
 }
 
 function renderTable(list) {
+  resetThumbObserver(els.tableWrap);
   els.tableBody.innerHTML = "";
   for (const item of list) {
     const tr = document.createElement("tr");
@@ -586,10 +760,11 @@ function exitViewMode() {
 
 function openDetail(id, list) {
   state.activeId = id;
-  state.detailIndex = list.findIndex((i) => i.image_id === id);
+  const fresh = list ?? filteredImages();
+  state.detailIndex = fresh.findIndex((i) => i.image_id === id);
   if (state.layoutPreset === "b") enterViewMode();
-  renderDetail(list);
-  renderListOnly(list);
+  renderDetail(fresh);
+  renderListOnly(fresh);
 }
 
 function pageThumbUrl(p) {
@@ -603,13 +778,8 @@ async function fetchWorkContext(imageId, item = null) {
 
   let data = item;
   if (data?.metadata == null && data?.work == null) {
-    try {
-      const res = await fetch(`/api/images/${encodeURIComponent(imageId)}`);
-      if (!res.ok) return null;
-      data = await res.json();
-    } catch {
-      return null;
-    }
+    data = await fetchApiImageDetailCached(imageId);
+    if (!data) return null;
   }
 
   const meta = data.metadata ?? null;
@@ -707,36 +877,65 @@ async function fetchWorkPages(workId) {
       thumb_url: p.thumb_url ?? null,
     }));
   }
-  try {
-    const res = await fetch(`/api/works/${encodeURIComponent(workId)}/pages?limit=500`);
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data.items ?? []).map((p) => ({
-      ...p,
-      thumb_url: p.has_thumbnail ? `/api/images/${p.image_id}/thumbnail` : null,
-    }));
-  } catch {
-    return [];
-  }
+  const key = String(workId);
+  const cached = workPagesCache.get(key);
+  if (cached) return cached;
+  const data = await fetchJsonRetry(`/api/works/${encodeURIComponent(workId)}/pages?limit=500`);
+  const pages = (data?.items ?? []).map((p) => ({
+    ...p,
+    thumb_url: p.has_thumbnail ? `/api/images/${p.image_id}/thumbnail` : null,
+  }));
+  cachePut(workPagesCache, key, pages);
+  return pages;
 }
 
-async function resolveDetailItem(list) {
-  const sync = resolveDetailItemSync(list);
-  if (sync) return sync;
+async function fetchApiImageDetail(imageId) {
+  const data = await fetchJsonRetry(`/api/images/${encodeURIComponent(imageId)}`);
+  if (!data) return null;
+  return {
+    ...data,
+    thumb_url: data.has_thumbnail ? `/api/images/${data.image_id}/thumbnail` : null,
+    preview_url: data.has_preview ? `/api/images/${data.image_id}/preview` : null,
+  };
+}
 
-  if (!state.useApi || !state.activeId) return null;
-  try {
-    const res = await fetch(`/api/images/${encodeURIComponent(state.activeId)}`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    return {
-      ...data,
-      thumb_url: data.has_thumbnail ? `/api/images/${data.image_id}/thumbnail` : null,
-      preview_url: data.has_preview ? `/api/images/${data.image_id}/preview` : null,
-    };
-  } catch {
-    return null;
-  }
+function fetchApiImageDetailCached(imageId) {
+  const done = detailDataCache.get(imageId);
+  if (done) return Promise.resolve(done);
+  const existing = detailFetchInflight.get(imageId);
+  if (existing) return existing;
+  const p = fetchApiImageDetail(imageId)
+    .then((data) => {
+      if (data) cachePut(detailDataCache, imageId, data);
+      return data;
+    })
+    .finally(() => {
+      detailFetchInflight.delete(imageId);
+    });
+  detailFetchInflight.set(imageId, p);
+  return p;
+}
+
+function renderDetailMeta(item) {
+  els.detailMeta.innerHTML = `
+    <dt>ID</dt><dd>${item.image_id}</dd>
+    <dt>ファイル</dt><dd>${item.file_name}</dd>
+    <dt>ルート</dt><dd>${routeLabel(item.route_tag)}</dd>
+  `;
+}
+
+function renderDetailTagsError() {
+  els.detailTags.innerHTML = "";
+  const p = document.createElement("p");
+  p.className = "detail-tag-legend";
+  p.textContent = "タグの読み込みに失敗しました（API / ネットワーク） ";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "btn-ghost";
+  btn.textContent = "再試行";
+  btn.addEventListener("click", () => renderDetail(filteredImages()));
+  p.appendChild(btn);
+  els.detailTags.appendChild(p);
 }
 
 function resolveDetailItemSync(list) {
@@ -746,146 +945,236 @@ function resolveDetailItemSync(list) {
   return state.apiImages?.find((i) => i.image_id === state.activeId) ?? null;
 }
 
+function bestDetailSrcs(item) {
+  if (!item?.image_id) return { preview: null, thumb: null };
+  const preview =
+    item.preview_url ??
+    (item.has_preview ? `/api/images/${item.image_id}/preview` : null);
+  const thumb =
+    item.thumb_url ??
+    (item.has_thumbnail ? `/api/images/${item.image_id}/thumbnail` : null);
+  return { preview, thumb };
+}
+
 function detailImageSrc(item) {
-  return item?.preview_url || item?.thumb_url || null;
+  const { preview, thumb } = bestDetailSrcs(item);
+  return preview || thumb || null;
 }
 
-async function preloadDetailImage(src) {
-  if (!src) return null;
-  const cached = detailImageCache.get(src);
-  if (cached?.complete) return cached;
-  const img = cached ?? new Image();
-  img.decoding = "async";
-  img.src = src;
-  if (detailImageCache.size >= 64) {
-    detailImageCache.delete(detailImageCache.keys().next().value);
-  }
-  detailImageCache.set(src, img);
-  try {
-    await img.decode();
-  } catch {
-    if (!img.complete) {
-      await new Promise((resolve) => {
-        img.onload = () => resolve();
-        img.onerror = () => resolve();
-      });
-    }
-  }
-  return img;
-}
-
-function createDetailPlaceholder(item) {
+function createDetailPlaceholder(item, message = "") {
   const ph = document.createElement("div");
   ph.className = "detail-ph";
   Object.assign(ph.style, item.thumbStyle || { minHeight: "240px" });
+  if (message) {
+    const msg = document.createElement("span");
+    msg.className = "detail-ph-msg";
+    msg.textContent = message;
+    ph.appendChild(msg);
+  }
   return ph;
 }
 
-function applyDetailImageSrc(src, alt) {
-  const absoluteSrc = new URL(src, location.href).href;
-  let img = els.detailImage.querySelector("img");
-  if (!img) {
-    img = document.createElement("img");
-    els.detailImage.replaceChildren(img);
-  }
-  img.alt = alt;
-  if (img.src !== absoluteSrc) img.src = src;
+/** `kind`: thumb | preview | failed | none — which image is currently shown for `imageId`. */
+function shownDetailImage() {
+  return {
+    imageId: els.detailImage.dataset.imageId || null,
+    kind: els.detailImage.dataset.kind || null,
+  };
 }
 
-async function updateDetailImage(item, gen) {
-  const src = detailImageSrc(item);
-  if (!src) {
-    if (gen !== detailRenderGen) return;
-    els.detailImage.replaceChildren(createDetailPlaceholder(item));
+function markDetailImage(imageId, kind) {
+  els.detailImage.dataset.imageId = imageId;
+  els.detailImage.dataset.kind = kind;
+  els.detailImage.classList.remove("is-stale");
+}
+
+function showDetailImg(item, loadedImg, kind) {
+  const shown = shownDetailImage();
+  if (kind === "thumb" && shown.imageId === item.image_id && shown.kind === "preview") return;
+  loadedImg.alt = "";
+  loadedImg.title = item.file_name;
+  if (els.detailImage.firstChild !== loadedImg || els.detailImage.childNodes.length !== 1) {
+    els.detailImage.replaceChildren(loadedImg);
+  }
+  markDetailImage(item.image_id, kind);
+}
+
+function showDetailFailure(item, message) {
+  const ph = createDetailPlaceholder(item, message);
+  ph.addEventListener("click", () => {
+    if (isActiveDetail(item.image_id)) void updateDetailImage(item);
+  });
+  els.detailImage.replaceChildren(ph);
+  markDetailImage(item.image_id, "failed");
+}
+
+function showCachedThumbNow(item) {
+  const { thumb } = bestDetailSrcs(item);
+  const img = thumb ? loadedImages.get(thumb) : null;
+  if (!img) return false;
+  showDetailImg(item, img, "thumb");
+  return true;
+}
+
+async function updateDetailImage(item, { withPreview = true } = {}) {
+  const imageId = item?.image_id;
+  if (!isActiveDetail(imageId)) return;
+
+  const { preview, thumb } = bestDetailSrcs(item);
+  if (!preview && !thumb) {
+    els.detailImage.replaceChildren(createDetailPlaceholder(item, "サムネ／プレビュー未生成"));
+    markDetailImage(imageId, "none");
     return;
   }
 
-  const cached = detailImageCache.get(src);
-  if (cached?.complete) {
-    if (gen !== detailRenderGen) return;
-    applyDetailImageSrc(src, item.file_name);
-    return;
-  }
+  const shown = shownDetailImage();
+  if (shown.imageId === imageId && shown.kind === "preview") return;
+  if (shown.imageId !== imageId) els.detailImage.classList.add("is-stale");
 
-  await preloadDetailImage(src);
-  if (gen !== detailRenderGen) return;
-  applyDetailImageSrc(src, item.file_name);
+  const wantPreview = withPreview && preview && preview !== thumb;
+  const previewP = wantPreview ? loadImage(preview) : null;
+  if (thumb) {
+    const img = await loadImage(thumb);
+    if (!isActiveDetail(imageId)) return;
+    if (img) showDetailImg(item, img, "thumb");
+  }
+  const previewLoad = previewP ?? (!thumb && preview ? loadImage(preview) : null);
+  if (previewLoad) {
+    const img = await previewLoad;
+    if (!isActiveDetail(imageId)) return;
+    if (img) {
+      showDetailImg(item, img, "preview");
+      return;
+    }
+  }
+  if (!withPreview && wantPreview) return;
+  if (shownDetailImage().imageId !== imageId) {
+    showDetailFailure(item, `${item.file_name} を読み込めませんでした（クリックで再試行）`);
+  }
 }
 
 function prefetchDetailNeighbors(list) {
   if (!list.length || state.detailIndex < 0) return;
   const n = list.length;
-  for (const delta of [-1, 1]) {
-    const idx = (state.detailIndex + delta + n) % n;
-    const src = detailImageSrc(list[idx]);
-    if (src) preloadDetailImage(src).catch(() => {});
+  for (const delta of [1, -1, 2, -2]) {
+    const { preview, thumb } = bestDetailSrcs(list[(state.detailIndex + delta + n) % n]);
+    if (thumb) void loadImage(thumb);
+    if (Math.abs(delta) === 1 && preview && preview !== thumb) void loadImage(preview);
   }
 }
 
-function scheduleDetailContext(item, gen) {
-  clearTimeout(detailContextTimer);
-  detailContextTimer = setTimeout(() => {
-    if (gen !== detailRenderGen) return;
-    void renderDetailContext(item);
-  }, 150);
-}
-
-function renderPageStrip(activeId, pages) {
+function renderPageStrip(activeId, pages, workId) {
   els.pageStrip.innerHTML = "";
+  els.pageStrip.dataset.workId = String(workId ?? "");
   for (const p of pages) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = `page-strip-item${p.image_id === activeId ? " active" : ""}`;
+    btn.dataset.id = p.image_id;
     btn.title = p.file_name || `p${p.page ?? "?"}`;
-    const thumbUrl = pageThumbUrl(p);
-    if (thumbUrl) {
-      const img = document.createElement("img");
-      img.src = thumbUrl;
-      img.alt = btn.title;
-      img.loading = "lazy";
-      btn.appendChild(img);
-    } else {
-      const ph = document.createElement("span");
-      ph.className = "ph";
-      Object.assign(ph.style, p.thumbStyle || { background: "#333" });
-      btn.appendChild(ph);
-    }
     const label = document.createElement("span");
     label.className = "label";
     label.textContent = p.page != null ? `p${p.page}` : "?";
+    const thumbUrl = pageThumbUrl(p);
+    const appendPh = () => {
+      const ph = document.createElement("span");
+      ph.className = "ph";
+      Object.assign(ph.style, p.thumbStyle || { background: "#333" });
+      btn.insertBefore(ph, label);
+    };
     btn.appendChild(label);
+    if (thumbUrl) {
+      const img = document.createElement("img");
+      img.alt = "";
+      attachImgRetry(img, thumbUrl, () => {
+        img.remove();
+        appendPh();
+      });
+      img.src = thumbUrl;
+      btn.insertBefore(img, label);
+    } else {
+      appendPh();
+    }
     btn.addEventListener("click", () => navWorkPage(p.image_id));
     els.pageStrip.appendChild(btn);
   }
+  scrollPageStripToActive();
+}
+
+function scrollPageStripToActive() {
   requestAnimationFrame(() => {
     els.pageStrip.querySelector(".active")?.scrollIntoView({ inline: "center", block: "nearest" });
   });
 }
 
-async function renderDetailContext(item) {
-  const workCtx = await fetchWorkContext(item.image_id, item);
+/** Strip already shows this image's work: move the highlight without rebuilding. */
+function highlightPageStrip(imageId) {
+  const btn = els.pageStrip.querySelector(`.page-strip-item[data-id="${CSS.escape(imageId)}"]`);
+  if (!btn) return false;
+  els.pageStrip.querySelectorAll(".page-strip-item.active").forEach((b) => b.classList.remove("active"));
+  btn.classList.add("active");
+  scrollPageStripToActive();
+  return true;
+}
+
+function beginDetailContext(item) {
+  els.detailContext.classList.remove("is-error");
+  if (highlightPageStrip(item.image_id)) return;
+  els.detailContext.classList.add("is-loading");
+  els.detailTitle.textContent = item.file_name || "…";
+  els.detailSubline.innerHTML = "";
+}
+
+function clearPageStrip() {
+  els.pageStrip.innerHTML = "";
+  els.pageStrip.dataset.workId = "";
+  els.workPos.textContent = "—";
+  els.workPrev.disabled = true;
+  els.workNext.disabled = true;
+  els.detailPageSlot.classList.remove("has-pages");
+}
+
+async function renderDetailContext(item, attempt = 0) {
+  const imageId = item.image_id;
+  if (!isActiveDetail(imageId)) return;
+
+  let workCtx = null;
+  let pages = null;
+  try {
+    workCtx = await fetchWorkContext(imageId, item);
+    if (workCtx?.multi_page && workCtx.work_id != null) pages = await fetchWorkPages(workCtx.work_id);
+  } catch {
+    if (!isActiveDetail(imageId)) return;
+    if (attempt < 2) {
+      setTimeout(() => void renderDetailContext(item, attempt + 1), 1500 * (attempt + 1));
+      return;
+    }
+    els.detailContext.classList.remove("is-loading");
+    els.detailContext.classList.add("is-error");
+    els.detailSubline.textContent = "作品情報を読み込めませんでした（← → で再試行）";
+    return;
+  }
+  if (!isActiveDetail(imageId)) return;
+
   const displayMeta = readDisplayMeta(item, workCtx);
   state.workContext = workCtx?.multi_page ? workCtx : null;
-
   els.detailTitle.textContent = contextTitle(item, displayMeta);
   renderSubline(item, displayMeta);
 
-  const multiPage = !!workCtx?.multi_page;
-  els.detailPageSlot.classList.toggle("has-pages", multiPage);
-
-  if (multiPage) {
+  if (workCtx?.multi_page) {
     const pageLabel = workCtx.page ?? workCtx.page_index ?? 0;
     els.workPos.textContent = `p${pageLabel} / ${workCtx.page_count}`;
     els.workPrev.disabled = !workCtx.prev_image_id;
     els.workNext.disabled = !workCtx.next_image_id;
-    const pages = await fetchWorkPages(workCtx.work_id);
-    renderPageStrip(item.image_id, pages);
+    els.detailPageSlot.classList.add("has-pages");
+    const sameWork = els.pageStrip.dataset.workId === String(workCtx.work_id);
+    if (!(sameWork && highlightPageStrip(imageId))) {
+      renderPageStrip(imageId, pages ?? [], workCtx.work_id);
+    }
   } else {
-    els.workPos.textContent = "—";
-    els.workPrev.disabled = true;
-    els.workNext.disabled = true;
-    els.pageStrip.innerHTML = "";
+    clearPageStrip();
   }
+  els.detailContext.classList.remove("is-loading", "is-error");
 }
 
 function navWorkPage(imageId) {
@@ -902,45 +1191,103 @@ function navWork(delta) {
   if (target) navWorkPage(target);
 }
 
+/**
+ * Detail pipeline: render list data synchronously, then after navigation settles
+ * (DETAIL_SETTLE_MS without another step) fetch detail JSON, preview and work context.
+ * Every async step re-checks `state.activeId`, so late responses are dropped.
+ */
 function renderDetail(list) {
-  const gen = ++detailRenderGen;
-  const item = resolveDetailItemSync(list);
-
-  if (!item) {
-    void (async () => {
-      const fetched = await resolveDetailItem(list);
-      if (gen !== detailRenderGen) return;
-      if (!fetched) {
-        els.detailEmpty.hidden = false;
-        els.detailContent.hidden = true;
-        state.workContext = null;
-        return;
-      }
-      renderDetailBody(list, fetched, gen);
-    })();
+  const imageId = state.activeId;
+  if (!imageId) {
+    els.detailEmpty.hidden = false;
+    els.detailContent.hidden = true;
+    state.workContext = null;
+    return;
+  }
+  const fromList = resolveDetailItemSync(list);
+  const cached = detailDataCache.get(imageId);
+  const base = cached
+    ? { ...fromList, ...cached }
+    : fromList ??
+      (state.useApi ? { image_id: imageId, file_name: "…", route_tag: null, tags: [] } : null);
+  if (!base) {
+    els.detailEmpty.hidden = false;
+    els.detailContent.hidden = true;
+    state.workContext = null;
     return;
   }
 
-  renderDetailBody(list, item, gen);
+  if (state.detailIndex >= 0) lastListIndex = state.detailIndex;
+  renderDetailBody(list, base);
+  beginDetailContext(base);
+  if (!showCachedThumbNow(base)) void updateDetailImage(base, { withPreview: false });
+
+  clearTimeout(detailSettleTimer);
+  detailSettleTimer = setTimeout(() => {
+    detailSettleTimer = null;
+    if (isActiveDetail(imageId)) void settleDetail(imageId, base, list);
+  }, DETAIL_SETTLE_MS);
 }
 
-function renderDetailBody(list, item, gen) {
+async function settleDetail(imageId, base, list) {
+  const baseHasMedia = !!detailImageSrc(base);
+  if (baseHasMedia || !state.useApi) {
+    void updateDetailImage(base).then(() => {
+      if (isActiveDetail(imageId)) prefetchDetailNeighbors(list);
+    });
+  }
+  if (!state.useApi) {
+    void renderDetailContext(base);
+    return;
+  }
+
+  let full;
+  try {
+    full = await fetchApiImageDetailCached(imageId);
+  } catch {
+    full = undefined;
+  }
+  if (!isActiveDetail(imageId)) return;
+
+  if (full) {
+    patchApiImageItem(full);
+    if (full.tag_sources) renderDetailTags(full);
+    else renderDetailTagsError();
+    renderDetailMeta(full);
+    if (!baseHasMedia) void updateDetailImage(full);
+    void renderDetailContext(full);
+    return;
+  }
+  renderDetailTagsError();
+  if (!baseHasMedia) showDetailFailure(base, "詳細を読み込めませんでした（クリックで再試行）");
+  void renderDetailContext(base);
+}
+
+function syncDetailChrome(list) {
+  if (!state.activeId) return;
+  const idx = list.findIndex((i) => i.image_id === state.activeId);
+  if (idx >= 0) state.detailIndex = idx;
+  renderListOnly(list);
+  els.detailPos.textContent = idx >= 0 ? `${idx + 1} / ${list.length}` : "—";
+  if (detailSettleTimer != null) return;
+  const shown = shownDetailImage();
+  if (shown.imageId !== state.activeId || shown.kind === "failed") renderDetail(list);
+}
+
+function renderDetailBody(list, item) {
   els.detailEmpty.hidden = true;
   els.detailContent.hidden = false;
   els.detailPos.textContent =
     state.detailIndex >= 0 ? `${state.detailIndex + 1} / ${list.length}` : "—";
 
-  void updateDetailImage(item, gen);
-  prefetchDetailNeighbors(list);
-
   els.detailTags.innerHTML = "";
-  renderDetailTags(item);
+  if (state.useApi && !item.tag_sources) {
+    els.detailTags.innerHTML = '<p class="detail-tag-legend">タグ（source 別）を読み込み中…</p>';
+  } else {
+    renderDetailTags(item);
+  }
   syncRetagButton();
-  els.detailMeta.innerHTML = `
-    <dt>ID</dt><dd>${item.image_id}</dd>
-    <dt>ファイル</dt><dd>${item.file_name}</dd>
-    <dt>ルート</dt><dd>${routeLabel(item.route_tag)}</dd>
-  `;
+  renderDetailMeta(item);
   els.similarStrip.innerHTML = "";
   const sim = (state.useApi ? list : IMAGES).filter((i) => i.image_id !== item.image_id).slice(0, 8);
   for (const s of sim) {
@@ -952,23 +1299,11 @@ function renderDetailBody(list, item, gen) {
       m.style.background = `center/cover url(${s.thumb_url})`;
     }
     m.title = "詳細へ";
-    m.addEventListener("click", () => openDetail(s.image_id, list));
+    m.addEventListener("click", () => openDetail(s.image_id, filteredImages()));
     els.similarStrip.appendChild(m);
   }
   els.btnSimilarReflux.disabled = false;
   els.btnSimilarReflux.dataset.imageId = item.image_id;
-
-  scheduleDetailContext(item, gen);
-
-  if ((!item.metadata || !item.tag_sources) && state.useApi) {
-    void (async () => {
-      const full = await resolveDetailItem(list);
-      if (gen !== detailRenderGen || !full) return;
-      patchApiImageItem(full);
-      renderDetailTags(full);
-      scheduleDetailContext(full, gen);
-    })();
-  }
 }
 
 function renderListOnly(list) {
@@ -1039,9 +1374,7 @@ function render() {
     renderTable(list);
   }
   if (state.activeId) {
-    const idx = list.findIndex((i) => i.image_id === state.activeId);
-    if (idx >= 0) state.detailIndex = idx;
-    renderDetail(list);
+    syncDetailChrome(list);
   } else if (state.layoutPreset === "a" && state.appMode === "explore") {
     els.detailEmpty.hidden = false;
     els.detailContent.hidden = true;
@@ -1055,8 +1388,8 @@ function render() {
 function mapApiImageItems(items) {
   return (items || []).map((item) => ({
     ...item,
-    thumb_url: `/api/images/${item.image_id}/thumbnail`,
-    preview_url: `/api/images/${item.image_id}/preview`,
+    thumb_url: item.has_thumbnail ? `/api/images/${item.image_id}/thumbnail` : null,
+    preview_url: item.has_preview ? `/api/images/${item.image_id}/preview` : null,
     ocr_text: "",
   }));
 }
@@ -1160,14 +1493,33 @@ async function refreshIndexStatus() {
   renderIndexStatusPanel();
 }
 
-function navDetail(delta) {
+function navDetailBySteps(steps) {
+  if (!steps) return;
   const list = filteredImages();
-  if (!list.length || state.detailIndex < 0) return;
+  const start = state.detailIndex >= 0 ? state.detailIndex : lastListIndex;
+  if (!list.length || start < 0) return;
   const n = list.length;
-  state.detailIndex = ((state.detailIndex + delta) % n + n) % n;
+  state.detailIndex = (((start + steps) % n) + n) % n;
   state.activeId = list[state.detailIndex].image_id;
   renderDetail(list);
   renderListOnly(list);
+}
+
+function navDetail(delta) {
+  navDetailBySteps(delta > 0 ? 1 : -1);
+}
+
+function flushWheelNav() {
+  wheelNavRaf = null;
+  const steps = wheelNavSteps;
+  wheelNavSteps = 0;
+  if (steps) navDetailBySteps(steps);
+}
+
+function queueWheelNav(delta) {
+  wheelNavSteps += delta > 0 ? 1 : -1;
+  if (wheelNavRaf != null) return;
+  wheelNavRaf = requestAnimationFrame(flushWheelNav);
 }
 
 let debounceTimer;
@@ -1273,7 +1625,7 @@ function bindEvents() {
 
   els.labIndexRefresh?.addEventListener("click", () => refreshIndexStatus());
 
-  els.tagFilter.addEventListener("input", render);
+  els.tagFilter.addEventListener("input", () => renderTagList());
   els.labToggle.addEventListener("click", () => els.lab.classList.toggle("collapsed"));
 
   els.detailImage.addEventListener(
@@ -1281,13 +1633,16 @@ function bindEvents() {
     (e) => {
       if (!state.activeId) return;
       e.preventDefault();
-      navDetail(e.deltaY > 0 ? 1 : -1);
+      queueWheelNav(e.deltaY > 0 ? 1 : -1);
     },
     { passive: false },
   );
 
   document.addEventListener("keydown", (e) => {
-    if (e.target.matches("input, textarea, select")) {
+    const isTextEntry =
+      e.target.matches("textarea, select, input") &&
+      !e.target.matches('input[type="checkbox"], input[type="radio"], input[type="range"], input[type="button"]');
+    if (isTextEntry) {
       if (e.key === "Escape") e.target.blur();
       return;
     }
@@ -1352,6 +1707,7 @@ function init() {
   els.detailNext = $("#detail-next");
   els.detailTitle = $("#detail-title");
   els.detailSubline = $("#detail-subline");
+  els.detailContext = $("#detail-context");
   els.detailPageSlot = $("#detail-page-slot");
   els.workPos = $("#work-pos");
   els.workPrev = $("#work-prev");

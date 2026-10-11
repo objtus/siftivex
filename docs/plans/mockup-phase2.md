@@ -12,7 +12,27 @@
 | 3 | **さらに読み込み** | 200 件ずつ `offset` 追加（API max limit） |
 | 4 | 案 A | サーバ検索のみ · `include_tag` · source 別詳細 · NS/flat プレビュー |
 
+## サムネイルが出ないとき
+
+1. **URL**: `http://127.0.0.1:5199`（`make mockup-dev`）· **Lab → 実 API ON**（`file://` 直開き不可）
+   - **`ERR_ADDRESS_IN_USE`**: 5199 が既に使用中。下記「mockup 再起動」
+   - **リモート開発**（Cursor ポート転送）: 転送先 URL を使う。ローカルで二重転送すると ADDRESS_IN_USE になりやすい
+   - **LAN / Tailscale から直アクセス**: `make mockup-dev MOCKUP_HOST=0.0.0.0`（ファイアウォール注意）
+2. **API**: `make api-dev` が :8787 で動いている · 再起動で一覧 `has_thumbnail` 反映
+3. **1 枚テスト**: グリッドで DevTools → Network → `/api/images/…/thumbnail` が **200** か **404**
+4. **欠損生成**（~300 枚 under 等）:
+   ```bash
+   .venv/bin/python scripts/backfill_thumbnails.py
+   ```
+5. **原画パス**: DB `source_path` が NAS 上に存在するか（Syncthing 未同期だと生成も表示も不可）
+
 ## 試すチェックリスト
+
+### 表示
+
+- [ ] グリッドにサムネ（プレースホルダのみのカードは欠損 or 404）
+- [ ] 詳細のプレビュー（`preview.webp` 優先）
+- [ ] 詳細 **タグ（レイヤー別）**: d1 / ファイル名 / Tagger の `<details>`（一覧 API には `tag_sources` なし → 詳細 GET で表示）
 
 ### タグ検索（完了条件）
 
