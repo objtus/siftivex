@@ -127,7 +127,7 @@ VLM    → 手動のみ（caption、任意）
 mockup v3 + 実 API で [mockup-phase2.md](mockup-phase2.md) を実行して確認する。
 
 - [x] 詳細: filename / auto_tagger / auto_d1 が分離表示（mockup v3）
-- [ ] タグ検索: `1girl`（EN）と `制服`（JA filename）の両方
+- [x] タグ検索: `tag:1girl`（EN）· `tag:オリジナル` 等 — API 自動 ✅ · `制服` は手動任意
 - [x] pixiv 画像: filename + auto_tagger（VLM `auto` なし · DB 確認済）
 - [ ] VLM retag API: **caption のみ** or 明示的レガシモード（タグ上書きしない）
 - [x] cron: VLM 常時実行なし（pending 0）

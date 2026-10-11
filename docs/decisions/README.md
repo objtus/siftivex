@@ -10,6 +10,7 @@
 | — | [ui-philosophy.md](ui-philosophy.md) — UI 設計思想（資料探し・二層ナビ） | 2026-09-06 | proposed |
 | — | [vlm-on-demand.md](vlm-on-demand.md) — VLM オンデマンド | — | accepted |
 | — | [role-based-model-stack.md](role-based-model-stack.md) — 役割別モデルスタック | 2026-10-10 | proposed |
+| — | [tag-bridge.md](tag-bridge.md) — 英日 tagger 橋渡し（辞書・localStorage+push） | 2026-10-12 | proposed |
 | — | [model-stack-rollout.md](../plans/model-stack-rollout.md) — 実装順・d1 日本語語彙 | 2026-10-10 | 計画 |
 
 ## テンプレート

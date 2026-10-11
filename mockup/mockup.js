@@ -308,8 +308,29 @@ function clearTagFilters() {
   void refreshList();
 }
 
+/** CLIP 検索時は API の score 順を使う（デフォルトのファイル名ソートで順序が崩れるのを防ぐ）。 */
+function syncSortForNlQuery() {
+  if (!state.useApi) return;
+  const text = queryTextOnly(state.query.trim());
+  if (text) {
+    if (state.sort !== "score") {
+      if (state._sortBeforeNl == null) state._sortBeforeNl = state.sort;
+      state.sort = "score";
+      prefs.sort = "score";
+      savePrefs();
+    }
+  } else if (state._sortBeforeNl != null) {
+    state.sort = state._sortBeforeNl;
+    prefs.sort = state.sort;
+    state._sortBeforeNl = null;
+    savePrefs();
+  }
+  if (els.sortSelect) els.sortSelect.value = state.sort;
+}
+
 /** New result set: reload from the API (if connected) and start at the top. */
 async function refreshList() {
+  syncSortForNlQuery();
   if (state.useApi) await tryLoadApi();
   facetShowAll = false;
   els.listScroll.scrollTop = 0;

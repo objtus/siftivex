@@ -47,7 +47,7 @@
 |---|---|
 | Phase 0 | ✅ |
 | Phase 1 | ✅ 40k+ embed、cron ingest/embed |
-| Phase 2 | 🟡 **mockup v3 + API** · 実利用検証中 · React 未作成 |
+| Phase 2 | ✅ **mockup v3 + API**（2026-10-12 クローズ）· React 昇格は必要時 |
 | Phase 3–4 | ⬜ |
 
 ### タグ・索引（本番 DB 概算 · 2026-10-12）
@@ -125,9 +125,9 @@ flowchart TD
 ```
 1. ✅ M0〜M2  本番 DB（tagger/d1 ~40k）
 2. 🟡 M3      検索/API/mockup — 残: ingest 増分 tagger · 移行チェックリスト
-3. **今**     Phase 2 実利用検証（mockup-phase2 チェックリスト）
-4. 次         query-language / api 仕様の確定 · 大規模一覧方針
-5. 後         M4 inferred_ja · React 昇格 or 継続 mockup · M5
+3. ~~Phase 2 実利用検証~~ ✅ 2026-10-12
+4. **次**     Tag Bridge（辞書 · [tag-bridge.md](../decisions/tag-bridge.md)）· M4 inferred_ja · ingest 増分
+5. 後         Phase 3 編集 · React 昇格 · M5 Gemma/VLM caption
 ```
 
 ---

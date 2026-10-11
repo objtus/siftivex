@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "updated_at": "2026-10-12T00:00:00Z",
+  "entries": [
+    {
+      "label": "制服",
+      "members": [
+        { "source": "filename", "tag": "制服" },
+        { "source": "auto_tagger", "tag": "serafuku" }
+      ]
+    }
+  ]
+}

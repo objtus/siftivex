@@ -97,7 +97,9 @@ make build-vocabulary   # under.iphone 全件スキャン → config/tag_vocabul
 | ~~VLM タグ~~ | ~~`auto`~~ | — | **廃止** — [tag-stack-migration.md](../plans/tag-stack-migration.md) M0 で削除 |
 | VLM キャプション | （列 `vlm_caption`） | 自然言語 | オンデマンドのみ。タグ source には載せない |
 
-**filename と tagger は統合しない。** 日本語 UI 検索は filename + namespace、density・英語軸は tagger。低 Jaccard は正常。エイリアス辞書は検索ブリッジ用（将来）。
+**filename と tagger は統合しない。** 日本語 UI 検索は filename + namespace、density・英語軸は tagger。低 Jaccard は正常。
+
+**Tag Bridge**（英日の実用エントリのみ）: 検索 OR 展開・表示ラベル — [tag-bridge.md](../decisions/tag-bridge.md) · [仕様](tag-bridge.md)。DB の tagger 文字列は書き換えない。
 
 移行後のパイプライン: **filename + auto_tagger + auto_d1 (+ inferred_ja)**。実施順は [tag-stack-migration.md](../plans/tag-stack-migration.md)。
 

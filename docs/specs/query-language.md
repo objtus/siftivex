@@ -11,7 +11,7 @@
 
 | トークン | 例 | 意味 |
 |---|---|---|
-| `tag:` | `tag:vaporwave系` | タグを含む |
+| `tag:` | `tag:vaporwave系` | タグを含む（**Tag Bridge** ラベルも可 → [tag-bridge.md](tag-bridge.md)） |
 | `-tag:` | `-tag:未分類` | タグを除外 |
 | `album:` | `album:参考資料` | アルバム所属 |
 | `similar_to:` | `similar_to:img_xxxx` | 基準画像との類似 |
@@ -36,9 +36,23 @@ blueprint より:
 
 （TBD: 同期アルゴリズムの詳細）
 
+## Tag Bridge（橋渡しラベル）
+
+[tag-bridge.md](tag-bridge.md) · [決定](../decisions/tag-bridge.md)
+
+ユーザーが `tag:制服` のように入力したとき、API は `data/tag_bridge.json` を参照する。
+
+1. `label === "制服"` のエントリがあれば、`members` を **OR** で include 集合に展開する。  
+   例: `filename:制服` OR `auto_tagger:serafuku` OR `auto_tagger:school_uniform`
+2. エントリが無ければ、`制服` を通常の 1 タグ（全 source 対象の既存ルール）として扱う。
+3. 複数の `tag:` / `include_tag` は展開 **後** も **AND**（従来どおり）。
+4. `-tag:` は v1 では bridge 非対応（リテラルタグのみ除外）。
+
+**UI**: 代表ラベルは日本語を推奨。詳細の英語 Tagger チップには bridge があれば括弧で label を表示（DB は変更しない）。
+
 ## FTS5 への変換
 
-（TBD: タグ・OCR 検索の FTS5 クエリ生成規則）
+（TBD: タグ・OCR 検索の FTS5 クエリ生成規則。bridge 展開は FTS 前段で include 集合を確定）
 
 ## LanceDB への変換
 
@@ -70,3 +84,4 @@ blueprint より:
 - [data-model.md](data-model.md) — FTS5 テーブル定義
 - [api.md](api.md) — 検索 API エンドポイント
 - [ui.md](ui.md) — FilterBar, QueryInput, TagChip
+- [tag-bridge.md](tag-bridge.md) — 辞書ファイル・API

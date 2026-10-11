@@ -6,7 +6,7 @@
 
 | 項目 | 状態 |
 |---|---|
-| フェーズ | Phase 1 完了 · **Phase 2 着手**（mockup v3 + 実 API） |
+| フェーズ | Phase 1–2 完了 · **次: 索引 M4 / Phase 3 / タグ精度** |
 | 索引 v2 | **M0〜M2 完了** · M3 おおむね完了 · M4（`inferred_ja`）未着手 |
 | DB | 40,320 images / 40,305 embedded · tagger+d1 各 40,305 枚 |
 | タグ方針 | **VLM `auto` 廃止済** → filename + tagger + d1 |
@@ -65,7 +65,7 @@ make mockup-dev   # :5199 — 静的 UI + API プロキシ
 |---|---|---|
 | [Phase 0](docs/plans/phase-0.md) | 基盤検証（数百枚で最小パイプライン） | パイプライン整備済 |
 | [Phase 1](docs/plans/phase-1.md) | コアデータ層（DB・n8n・4万枚投入） | **完了** |
-| [Phase 2](docs/plans/phase-2.md) | 検索・閲覧の最小 UI | **着手**（mockup v3） |
+| [Phase 2](docs/plans/phase-2.md) | 検索・閲覧の最小 UI | **完了**（mockup v3） |
 | [Phase 3](docs/plans/phase-3.md) | 編集機能（タグ/OCR/アルバム/一括操作） | スケルトン |
 | [Phase 4](docs/plans/phase-4.md) | 仕上げ・拡張 | スケルトン |
 

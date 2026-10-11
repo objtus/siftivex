@@ -54,34 +54,48 @@ make mockup-dev   # :5199
 3. 欠損生成: `.venv/bin/python scripts/backfill_thumbnails.py`
 4. DB `source_path` が NAS 上に存在するか（Syncthing 未同期だと不可）
 
+## 自動検証
+
+```bash
+make api-dev && make mockup-dev   # 別ターミナル
+uv run --with playwright python scripts/mockup_phase2_verify.py
+```
+
+結果: [mockup-phase2-results.md](mockup-phase2-results.md)（2026-10-12 · 30 項目共に OK）。
+
 ## 試すチェックリスト
 
 ### 表示
 
-- [ ] グリッドにサムネ（「サムネ未生成」「読み込み失敗」プレースホルダは欠損 or 通信）
-- [ ] 詳細プレビュー（`preview.webp` 優先）
-- [ ] 詳細タグ: 構造化（d1）· ファイル名/pixiv · Tagger 等（詳細 GET の `tag_sources`）
+- [x] グリッドにサムネ — 自動 ✅
+- [x] 詳細プレビュー — 自動 ✅
+- [x] 詳細タグ（source 別）— 自動 ✅
 
 ### タグ検索（Phase 2 完了条件）
 
-- [ ] **pixiv** · `tag:オリジナル`（filename）· Tagger チップ · `tag:種類/イラスト`（d1）
-- [ ] **under** · filename · `tag:"bare legs"` 等 · d1 `tag:種類/写真`
-- [ ] ファセット行クリック / Shift+クリック（除外）· チップ複数 · すべて解除
+- [x] API: `tag:オリジナル` · `tag:種類/イラスト` · `tag:"bare legs"` · `tag:1girl` — 自動 ✅
+- [ ] **手動**: サイドバーで **pixiv / under** を選んで同種クエリ
+- [x] ファセット / 除外 / 解除 — 自動 ✅
 
 ### 閲覧 UX
 
-- [ ] 3k+ ヒットで無限スクロール + 詳細前後（ホイール・矢印）
-- [ ] 一覧へ戻る · スクロール位置 · 選択カード
-- [ ] 複数ページ作品: `[` `]` · page strip · ページ切替後も作品送り
+- [x] 2.7k+ ヒットで追加ロード — 自動 ✅
+- [~] 一覧へ戻る · スクロール位置 — 選択カード ✅ · スクロールは実機確認
+- [x] 複数ページ · `[` `]` · strip — 自動 ✅
 
 ### 自然言語
 
-- [ ] クエリにテキストのみ（例: `青い髪`）→ 並び・スコア（表レイアウトのスコア列）
+- [x] `青い髪` → 関連度 + 表スコア — 自動 ✅（NL 時は関連度へ自動切替）
 
 ### 設定 · 索引
 
-- [ ] tagger/d1 件数が DB と一致（ルート内訳）
-- [ ] テーマ auto/dark/light が保持される（localStorage）
+- [x] tagger/d1 件数 — 自動 ✅
+- [x] テーマ保持 — 自動 ✅
+
+### 手動のみ推奨
+
+- [ ] タブレット / スマホ（ドロワー · スワイプ · 情報）
+- [x] **15 分の資料探し** — 2026-10-12 · 満足 · Phase 2 クローズ
 
 ## 未着手（Phase 2 本番 UI 向け）
 

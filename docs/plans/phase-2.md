@@ -1,6 +1,6 @@
 # Phase 2: 検索・閲覧の最小 UI
 
-> **状態**: 着手 — mockup v3 が参照実装（2026-10-12）  
+> **状態**: **完了（mockup v3 検証済）** — 2026-10-12 ユーザー試用で Phase 2 クローズ  
 > **参照**: [project-roadmap.md](project-roadmap.md), [tag-stack-migration.md](tag-stack-migration.md), [ui.md](../specs/ui.md)
 
 ## 目的
@@ -54,11 +54,17 @@
 
 ## 完了条件
 
-- [ ] **filename + auto_tagger** で pixiv / under.iphone をタグ検索できる
-- [x] 詳細で source 別タグが分かる（mockup）
-- [ ] タグフィルタで数千枚を絞り込める（要チェックリスト確認）
-- [ ] 自然言語（CLIP）検索が動く
-- [ ] 資料探しで「使える/使えない」判断ができる
+- [~] **filename + auto_tagger** で pixiv / under をタグ検索 — API/mockup 自動 ✅ · ルート切替は手動残
+- [x] 詳細で source 別タグが分かる（mockup · [mockup-phase2-results.md](mockup-phase2-results.md)）
+- [x] タグフィルタで数千枚を絞り込める（例: 種類/イラスト 27k → ページング）
+- [x] 自然言語（CLIP）検索が動く（`青い髪` · score · 関連度ソート）
+- [x] 資料探しで「使える/使えない」判断ができる（2026-10-12 · 現状満足 · 以降は機能追加・タグ精度の別トラック）
+
+## クローズメモ（2026-10-12）
+
+- **成果物**: `mockup/` v3 を Phase 2 の参照 UI として採用。FastAPI 検索・詳細・索引と接続済み。
+- **スコープ外に回すもの**: React 本番化（必要になったら v3 を写す）、タグ精度（M4 `inferred_ja`・モデル調整）、新機能要望。
+- **残ドキュメント**: [query-language.md](../specs/query-language.md) / [api.md](../specs/api.md) の仕様確定は Phase 3 着手前でも可。
 
 ## 関連ドキュメント
 
