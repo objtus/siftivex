@@ -7,9 +7,9 @@
 
 ## ゴール（v1 完了条件）
 
-- [ ] `PATCH /api/images/{image_id}/tags` — `add` / `remove` / `restore` · 差分レイヤーのみ書き込み
-- [ ] 単体テスト（仕様 §テスト観点 5 件）
-- [ ] mockup 詳細: 編集モード · 追加 · 非表示 · 復元 · API 反映
+- [x] `PATCH /api/images/{image_id}/tags` — `add` / `remove` / `restore` · 差分レイヤーのみ書き込み
+- [x] 単体テスト（仕様 §テスト観点 5 件）
+- [x] mockup 詳細: 編集モード · 追加 · 非表示 · 復元 · API 反映
 - [ ] 手動: 1 枚編集 → 一覧 `tag:` 再検索で結果変化 · tagger バッチ後も手動差分保持（ステージング DB または本番 1 枚で可）
 
 ## 非ゴール（v1）

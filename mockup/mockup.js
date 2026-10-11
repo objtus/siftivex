@@ -54,6 +54,8 @@ const state = {
   originIndex: 0,
   savedScrollTop: 0,
   retagBusy: false,
+  tagEditMode: false,
+  tagEditBusy: false,
   apiTotal: null,
   apiLoadError: null,
   tagBridge: { entries: [], dirty: false, serverUpdatedAt: null },
@@ -444,6 +446,67 @@ function patchApiImageItem(data) {
   }
 }
 
+function activeDetailItem() {
+  if (!state.activeId) return null;
+  return state.apiImages?.find((i) => i.image_id === state.activeId) ?? null;
+}
+
+function setTagEditMsg(msg, isError = false) {
+  if (!els.tagEditMsg) return;
+  const show = !!msg;
+  els.tagEditMsg.hidden = !show;
+  els.tagEditMsg.textContent = msg || "";
+  els.tagEditMsg.classList.toggle("ok", show && !isError);
+}
+
+function syncTagEditChrome() {
+  const on = state.useApi && state.appMode === "view";
+  if (els.tagEditToggleWrap) els.tagEditToggleWrap.hidden = !on;
+  if (els.tagEditAddRow) els.tagEditAddRow.hidden = !on || !state.tagEditMode;
+  if (els.tagEditToggle) {
+    els.tagEditToggle.checked = state.tagEditMode;
+    els.tagEditToggle.disabled = state.tagEditBusy;
+  }
+  if (els.tagEditInput) els.tagEditInput.disabled = state.tagEditBusy;
+  if (els.tagEditAddBtn) els.tagEditAddBtn.disabled = state.tagEditBusy;
+}
+
+async function patchImageTags(body) {
+  if (!state.useApi || !state.activeId || state.tagEditBusy) return;
+  state.tagEditBusy = true;
+  syncTagEditChrome();
+  setTagEditMsg("");
+  try {
+    const res = await fetch(`/api/images/${encodeURIComponent(state.activeId)}/tags`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        add: body.add || [],
+        remove: body.remove || [],
+        restore: body.restore || [],
+      }),
+    });
+    if (!res.ok) throw new Error(await readApiError(res));
+    const data = await res.json();
+    patchApiImageItem(data);
+    renderDetailTags(data);
+    renderListOnly();
+    if (state.gridLayout === "table") render(filteredImages());
+  } catch (err) {
+    setTagEditMsg(err.message || String(err), true);
+  } finally {
+    state.tagEditBusy = false;
+    syncTagEditChrome();
+  }
+}
+
+function submitTagEditAdd() {
+  const raw = els.tagEditInput?.value?.trim();
+  if (!raw) return;
+  if (els.tagEditInput) els.tagEditInput.value = "";
+  void patchImageTags({ add: [raw] });
+}
+
 async function readApiError(res) {
   const raw = await res.text();
   try {
@@ -508,6 +571,8 @@ function partitionEffectiveTags(tags) {
 
 function renderDetailTags(item) {
   els.detailTags.innerHTML = "";
+  syncTagEditChrome();
+  const editMode = state.useApi && state.tagEditMode;
   const sources = item?.tag_sources;
   if (sources && state.useApi) {
     const layers = [
@@ -516,11 +581,12 @@ function renderDetailTags(item) {
       ["Tagger", "画像認識モデルによる英語タグ", sources.auto_tagger, "src-en", false, "auto_tagger"],
       ["推定（日本語）", "", sources.inferred_ja, "src-ja", false, "inferred_ja"],
       ["VLM（旧）", "", sources.auto, "src-en", false, null],
-      ["手動", "", sources.manual_added, "src-en", false, "manual_added"],
+      ["手動", "手動で追加したタグ", sources.manual_added, "src-en", true, "manual_added"],
     ];
     for (const [label, hint, tags, cls, open, chipSource] of layers) {
-      appendTagSourceBlock(els.detailTags, label, tags, { cls, open, hint, chipSource });
+      appendTagSourceBlock(els.detailTags, label, tags, { cls, open, hint, chipSource, editMode });
     }
+    appendHiddenTagsBlock(els.detailTags, sources.manual_removed || [], editMode);
     if (!els.detailTags.childElementCount) {
       els.detailTags.innerHTML = '<p class="detail-tag-legend">タグはまだありません</p>';
     }
@@ -528,11 +594,50 @@ function renderDetailTags(item) {
   }
   const row = document.createElement("div");
   row.className = "tag-editor";
-  appendTagChips(row, item?.tags || []);
+  appendTagChips(row, item?.tags || [], { editMode: false });
   els.detailTags.appendChild(row);
 }
 
-function appendTagSourceBlock(container, label, tags, { cls = "", open = false, hint = "", chipSource = null } = {}) {
+function appendHiddenTagsBlock(container, removed, editMode) {
+  if (!editMode || !removed?.length) return;
+  const block = document.createElement("details");
+  block.className = "tag-source-block src-en";
+  block.open = false;
+  const head = document.createElement("summary");
+  const dot = document.createElement("span");
+  dot.className = "src-dot";
+  const name = document.createElement("span");
+  name.textContent = "非表示にしたタグ";
+  const count = document.createElement("span");
+  count.className = "src-count";
+  count.textContent = String(removed.length);
+  head.append(dot, name, count);
+  block.appendChild(head);
+  const list = document.createElement("div");
+  list.className = "tag-hidden-list";
+  for (const t of removed) {
+    const row = document.createElement("div");
+    row.className = "tag-hidden-row";
+    const label = document.createElement("span");
+    label.textContent = t;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn-ghost";
+    btn.textContent = "表示に戻す";
+    btn.addEventListener("click", () => void patchImageTags({ restore: [t] }));
+    row.append(label, btn);
+    list.appendChild(row);
+  }
+  block.appendChild(list);
+  container.appendChild(block);
+}
+
+function appendTagSourceBlock(
+  container,
+  label,
+  tags,
+  { cls = "", open = false, hint = "", chipSource = null, editMode = false } = {},
+) {
   const list = tags || [];
   if (!list.length) return;
   const block = document.createElement("details");
@@ -551,7 +656,7 @@ function appendTagSourceBlock(container, label, tags, { cls = "", open = false, 
   block.appendChild(head);
   const row = document.createElement("div");
   row.className = "tag-editor";
-  appendTagChips(row, list, { source: chipSource });
+  appendTagChips(row, list, { source: chipSource, editMode });
   block.appendChild(row);
   container.appendChild(block);
 }
@@ -562,17 +667,24 @@ function chipDisplayText(tag, source) {
   return label ? `${tag}（${label}）` : tag;
 }
 
-function appendTagChips(container, tags, { source = null } = {}) {
+function appendTagChips(container, tags, { source = null, editMode = false } = {}) {
   for (const t of tags || []) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "tag-chip";
-    const fs = tagFilterState(t, source);
-    if (fs === 1) btn.classList.add("include");
-    if (fs === 2) btn.classList.add("exclude");
-    btn.textContent = chipDisplayText(t, source);
-    btn.title = "クリックで絞り込み / Shift+クリックで除外";
-    btn.addEventListener("click", (e) => toggleTagFilterFromUi(t, source, e.shiftKey));
+    if (editMode) {
+      btn.classList.add("tag-chip-edit");
+      btn.textContent = chipDisplayText(t, source);
+      btn.title = "クリックで非表示";
+      btn.addEventListener("click", () => void patchImageTags({ remove: [t] }));
+    } else {
+      const fs = tagFilterState(t, source);
+      if (fs === 1) btn.classList.add("include");
+      if (fs === 2) btn.classList.add("exclude");
+      btn.textContent = chipDisplayText(t, source);
+      btn.title = "クリックで絞り込み / Shift+クリックで除外";
+      btn.addEventListener("click", (e) => toggleTagFilterFromUi(t, source, e.shiftKey));
+    }
     container.appendChild(btn);
   }
 }
@@ -1028,6 +1140,8 @@ function enterViewMode() {
 }
 
 function exitViewMode({ fromHistory = false } = {}) {
+  state.tagEditMode = false;
+  setTagEditMsg("");
   if (state.appMode !== "view") return;
   state.appMode = "explore";
   applyShellClasses();
@@ -1865,6 +1979,26 @@ function bindEvents() {
   els.workPrev.addEventListener("click", () => navWork(-1));
   els.workNext.addEventListener("click", () => navWork(1));
   els.btnBackExplore.addEventListener("click", () => exitViewMode());
+
+  els.tagEditToggle?.addEventListener("change", () => {
+    state.tagEditMode = !!els.tagEditToggle.checked;
+    syncTagEditChrome();
+    setTagEditMsg("");
+    const item = activeDetailItem();
+    if (item?.tag_sources) renderDetailTags(item);
+    else if (state.activeId && state.useApi) {
+      void fetchApiImageDetailCached(state.activeId).then((full) => {
+        if (full?.tag_sources && isActiveDetail(state.activeId)) renderDetailTags(full);
+      });
+    }
+  });
+  els.tagEditAddBtn?.addEventListener("click", () => submitTagEditAdd());
+  els.tagEditInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      submitTagEditAdd();
+    }
+  });
   $$(".edge-nav").forEach((btn) => {
     btn.addEventListener("click", () => navDetail(Number(btn.dataset.nav)));
   });
@@ -1938,6 +2072,13 @@ function bindEvents() {
     if (e.key === "Escape") {
       if (openOverlayName) {
         closeOverlays();
+        return;
+      }
+      if (state.tagEditMode) {
+        state.tagEditMode = false;
+        syncTagEditChrome();
+        const item = activeDetailItem();
+        if (item?.tag_sources) renderDetailTags(item);
         return;
       }
       if (state.appMode === "view") exitViewMode();
@@ -2448,6 +2589,12 @@ async function init() {
     workNext: "work-next",
     pageStrip: "page-strip",
     detailTags: "detail-tags",
+    tagEditToggleWrap: "tag-edit-toggle-wrap",
+    tagEditToggle: "tag-edit-toggle",
+    tagEditMsg: "tag-edit-msg",
+    tagEditAddRow: "tag-edit-add-row",
+    tagEditInput: "tag-edit-input",
+    tagEditAddBtn: "tag-edit-add-btn",
     detailMeta: "detail-meta",
     btnBackExplore: "btn-back-explore",
     btnInfo: "btn-info",

@@ -74,6 +74,12 @@ class MockupHandler(SimpleHTTPRequestHandler):
             return
         self.send_error(405, "Method Not Allowed")
 
+    def do_PATCH(self) -> None:
+        if self.path.startswith("/api/"):
+            self._proxy("PATCH")
+            return
+        self.send_error(405, "Method Not Allowed")
+
     def end_headers(self) -> None:
         if not self.path.startswith("/api/"):
             self.send_header("Cache-Control", "no-cache")
@@ -130,7 +136,7 @@ class MockupHandler(SimpleHTTPRequestHandler):
 
     def log_message(self, fmt: str, *args) -> None:
         if args and isinstance(args[0], str) and args[0].startswith(
-            ("GET /api/", "POST /api/", "PUT /api/", "HEAD /api/")
+            ("GET /api/", "POST /api/", "PUT /api/", "PATCH /api/", "HEAD /api/")
         ):
             sys.stderr.write("PROXY %s\n" % (fmt % args))
             return

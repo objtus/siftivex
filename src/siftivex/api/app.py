@@ -16,6 +16,7 @@ from siftivex.paths import (
     DEFAULT_THUMBNAILS_DIR,
 )
 from siftivex.tag_bridge import load_tag_bridge, parse_tag_bridge, save_tag_bridge, tag_bridge_to_dict
+from siftivex.tag_edits import TagEditError, apply_tag_patch
 from siftivex.search import image_to_dict, search_images
 from siftivex.tag_vocabulary import PROMPT_REVISION
 from siftivex.tag_stack_status import tag_stack_by_route, tag_stack_summary
@@ -99,6 +100,18 @@ def _has_thumbnail(image_id: str) -> bool:
     return _thumb_paths(image_id).thumb.is_file()
 
 
+def _tag_sources_payload(grouped: dict) -> dict:
+    return {
+        "auto": grouped["auto"],
+        "filename": grouped["filename"],
+        "auto_tagger": grouped["auto_tagger"],
+        "auto_d1": grouped["auto_d1"],
+        "inferred_ja": grouped["inferred_ja"],
+        "manual_added": grouped["manual_added"],
+        "manual_removed": grouped.get("manual_removed", []),
+    }
+
+
 @app.get("/api/images/{image_id}")
 def get_image(image_id: str) -> dict:
     conn = get_connection(DEFAULT_DB_PATH)
@@ -133,20 +146,49 @@ def get_image(image_id: str) -> dict:
         "vlm_caption": row["vlm_caption"],
         "status": row["status"],
         "tags": tags,
-        "tag_sources": {
-            "auto": tag_sources["auto"],
-            "filename": tag_sources["filename"],
-            "auto_tagger": tag_sources["auto_tagger"],
-            "auto_d1": tag_sources["auto_d1"],
-            "inferred_ja": tag_sources["inferred_ja"],
-            "manual_added": tag_sources["manual_added"],
-        },
+        "tag_sources": _tag_sources_payload(tag_sources),
         "prompt_revision": PROMPT_REVISION,
         "ocr_text": ocr["text"] if ocr else "",
         "has_thumbnail": thumbs.thumb.is_file(),
         "has_preview": thumbs.preview.is_file(),
         "metadata": metadata,
         "work": work,
+    }
+
+
+@app.patch("/api/images/{image_id}/tags")
+def patch_image_tags(image_id: str, body: dict = Body(...)) -> dict:
+    add = body.get("add") or []
+    remove = body.get("remove") or []
+    restore = body.get("restore") or []
+    if not isinstance(add, list) or not isinstance(remove, list) or not isinstance(restore, list):
+        raise HTTPException(status_code=400, detail="add, remove, restore must be arrays")
+    conn = get_connection(DEFAULT_DB_PATH)
+    try:
+        try:
+            apply_tag_patch(conn, image_id, add=add, remove=remove, restore=restore)
+        except TagEditError as exc:
+            msg = str(exc)
+            code = 404 if msg == "image not found" else 400
+            raise HTTPException(status_code=code, detail=msg) from exc
+        conn.commit()
+        tags = effective_tags(conn, image_id)
+        grouped = tags_grouped_by_source(conn, image_id)
+        row = conn.execute(
+            "SELECT file_name, route_tag FROM images WHERE image_id = ?",
+            (image_id,),
+        ).fetchone()
+    except HTTPException:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return {
+        "image_id": image_id,
+        "file_name": row["file_name"],
+        "route_tag": row["route_tag"],
+        "tags": tags,
+        "tag_sources": _tag_sources_payload(grouped),
     }
 
 
@@ -181,14 +223,7 @@ def retag_image_endpoint(image_id: str) -> dict:
         "route_tag": row["route_tag"],
         "vlm_caption": row["vlm_caption"],
         "tags": tags,
-        "tag_sources": {
-            "auto": tag_sources["auto"],
-            "filename": tag_sources["filename"],
-            "auto_tagger": tag_sources["auto_tagger"],
-            "auto_d1": tag_sources["auto_d1"],
-            "inferred_ja": tag_sources["inferred_ja"],
-            "manual_added": tag_sources["manual_added"],
-        },
+        "tag_sources": _tag_sources_payload(tag_sources),
         "thinking_enabled": outcome.thinking_enabled,
         "reasoning_chars": outcome.reasoning_chars,
         "prompt_revision": PROMPT_REVISION,

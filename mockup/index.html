@@ -168,9 +168,27 @@
                   </div>
                 </section>
 
-                <section class="info-section">
-                  <h2 class="info-label">タグ</h2>
+                <section class="info-section tag-info-section">
+                  <div class="tag-section-head">
+                    <h2 class="info-label">タグ</h2>
+                    <label class="tag-edit-toggle" id="tag-edit-toggle-wrap" hidden>
+                      <input type="checkbox" id="tag-edit-toggle" />
+                      <span>編集</span>
+                    </label>
+                  </div>
+                  <p class="tag-edit-msg" id="tag-edit-msg" hidden></p>
                   <div class="detail-tags" id="detail-tags"></div>
+                  <div class="tag-edit-add-row" id="tag-edit-add-row" hidden>
+                    <input
+                      type="text"
+                      id="tag-edit-input"
+                      class="tag-edit-input"
+                      placeholder="タグを追加"
+                      autocomplete="off"
+                      spellcheck="false"
+                    />
+                    <button type="button" class="btn-ghost" id="tag-edit-add-btn">追加</button>
+                  </div>
                 </section>
 
                 <section class="info-section">

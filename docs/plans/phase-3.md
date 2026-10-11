@@ -34,7 +34,7 @@
 
 | # | タスク | 状態 | 備考 |
 |---|---|---|---|
-| **3.1** | タグ編集 API + TagEditor | **計画済** | [tag-editing-implementation.md](tag-editing-implementation.md) T1–T2 |
+| **3.1** | タグ編集 API + TagEditor | **v1 実装済** | [tag-editing-implementation.md](tag-editing-implementation.md) · 手動検証残 |
 | 3.2 | OCR 編集 API + OcrEditor | pending | |
 | 3.3 | アルバム API + UI | pending | |
 | 3.4 | 複数選択 + BulkActionBar | pending | タグ一括は T4 |
@@ -51,7 +51,7 @@
 
 ### v1 タグ編集のみ（3.1 部分完了）
 
-- [ ] PATCH tags · mockup 編集モード · テスト 5 件（仕様 §テスト観点）
+- [x] PATCH tags · mockup 編集モード · テスト 5 件（仕様 §テスト観点）
 
 ## 関連ドキュメント
 

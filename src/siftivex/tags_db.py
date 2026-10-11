@@ -171,6 +171,17 @@ def tags_grouped_by_source(conn: sqlite3.Connection, image_id: str) -> dict[str,
         seen[source].add(tag)
         grouped[source].append(tag)
     grouped["auto"] = dedupe_namespace_flat_tags(grouped["auto"])
+    grouped["manual_removed"] = [
+        r[0]
+        for r in conn.execute(
+            """
+            SELECT tag FROM image_tags
+            WHERE image_id = ? AND source = 'manual_removed'
+            ORDER BY tag
+            """,
+            (image_id,),
+        ).fetchall()
+    ]
     grouped["effective"] = effective_tags(conn, image_id)
     return grouped
 

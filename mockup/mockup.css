@@ -1286,6 +1286,81 @@ input[type="range"] {
   border-bottom: 0;
 }
 
+.tag-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.tag-section-head .info-label {
+  margin: 0;
+}
+
+.tag-edit-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.tag-edit-msg {
+  margin: 0 0 6px;
+  font-size: var(--fs-xs);
+  color: var(--exclude);
+}
+
+.tag-edit-msg.ok {
+  color: var(--text-3);
+}
+
+.tag-edit-add-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tag-edit-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--surface-2);
+  font-size: var(--fs-xs);
+  color: var(--text);
+}
+
+.tag-chip.tag-chip-edit {
+  padding-right: 4px;
+  border-color: var(--line);
+  cursor: pointer;
+}
+
+.tag-chip.tag-chip-edit:hover {
+  border-color: var(--exclude);
+  color: var(--exclude);
+}
+
+.tag-hidden-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+
+.tag-hidden-row button {
+  flex-shrink: 0;
+  font-size: var(--fs-xs);
+}
+
 .detail-tags {
   display: flex;
   flex-direction: column;
