@@ -4,6 +4,8 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
 const PREFS_KEY = "siftivex.mockup.prefs";
+const TAG_BRIDGE_DRAFT_KEY = "siftivex.mockup.tagBridge.draft";
+const BRIDGE_SOURCES = ["filename", "auto_tagger", "auto_d1", "inferred_ja", "manual_added"];
 const GRID_LAYOUTS = ["justified", "masonry", "square", "table"];
 
 function loadPrefs() {
@@ -54,6 +56,8 @@ const state = {
   retagBusy: false,
   apiTotal: null,
   apiLoadError: null,
+  tagBridge: { entries: [], dirty: false, serverUpdatedAt: null },
+  tagBridgeMemberLabels: {},
   apiPageLimit: 200,
   apiLoadingMore: false,
   indexStatus: null,
@@ -449,15 +453,15 @@ function renderDetailTags(item) {
   const sources = item?.tag_sources;
   if (sources && state.useApi) {
     const layers = [
-      ["構造化", "d1 が判定した種類・画角・アングルなど", sources.auto_d1, "src-d1", true],
-      ["ファイル名・pixiv", "ファイル名や pixiv のタグ", sources.filename, "src-ja", true],
-      ["Tagger", "画像認識モデルによる英語タグ", sources.auto_tagger, "src-en", false],
-      ["推定（日本語）", "", sources.inferred_ja, "src-ja", false],
-      ["VLM（旧）", "", sources.auto, "src-en", false],
-      ["手動", "", sources.manual_added, "src-en", false],
+      ["構造化", "d1 が判定した種類・画角・アングルなど", sources.auto_d1, "src-d1", true, "auto_d1"],
+      ["ファイル名・pixiv", "ファイル名や pixiv のタグ", sources.filename, "src-ja", true, "filename"],
+      ["Tagger", "画像認識モデルによる英語タグ", sources.auto_tagger, "src-en", false, "auto_tagger"],
+      ["推定（日本語）", "", sources.inferred_ja, "src-ja", false, "inferred_ja"],
+      ["VLM（旧）", "", sources.auto, "src-en", false, null],
+      ["手動", "", sources.manual_added, "src-en", false, "manual_added"],
     ];
-    for (const [label, hint, tags, cls, open] of layers) {
-      appendTagSourceBlock(els.detailTags, label, tags, { cls, open, hint });
+    for (const [label, hint, tags, cls, open, chipSource] of layers) {
+      appendTagSourceBlock(els.detailTags, label, tags, { cls, open, hint, chipSource });
     }
     if (!els.detailTags.childElementCount) {
       els.detailTags.innerHTML = '<p class="detail-tag-legend">タグはまだありません</p>';
@@ -470,7 +474,7 @@ function renderDetailTags(item) {
   els.detailTags.appendChild(row);
 }
 
-function appendTagSourceBlock(container, label, tags, { cls = "", open = false, hint = "" } = {}) {
+function appendTagSourceBlock(container, label, tags, { cls = "", open = false, hint = "", chipSource = null } = {}) {
   const list = tags || [];
   if (!list.length) return;
   const block = document.createElement("details");
@@ -489,19 +493,25 @@ function appendTagSourceBlock(container, label, tags, { cls = "", open = false, 
   block.appendChild(head);
   const row = document.createElement("div");
   row.className = "tag-editor";
-  appendTagChips(row, list);
+  appendTagChips(row, list, { source: chipSource });
   block.appendChild(row);
   container.appendChild(block);
 }
 
-function appendTagChips(container, tags) {
+function chipDisplayText(tag, source) {
+  if (!source) return tag;
+  const label = state.tagBridgeMemberLabels[`${source}\0${tag}`];
+  return label ? `${tag}（${label}）` : tag;
+}
+
+function appendTagChips(container, tags, { source = null } = {}) {
   for (const t of tags || []) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "tag-chip";
     if (state.tagStates[t] === 1) btn.classList.add("include");
     if (state.tagStates[t] === 2) btn.classList.add("exclude");
-    btn.textContent = t;
+    btn.textContent = chipDisplayText(t, source);
     btn.title = "クリックで絞り込み / Shift+クリックで除外";
     btn.addEventListener("click", (e) => toggleTagFilter(t, e.shiftKey));
     container.appendChild(btn);
@@ -1899,6 +1909,290 @@ function bindEvents() {
   });
 }
 
+/* ── Tag bridge (draft localStorage + server push) ── */
+
+function loadBridgeDraftFromStorage() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(TAG_BRIDGE_DRAFT_KEY) || "null");
+    if (!raw?.entries) return;
+    state.tagBridge.entries = raw.entries;
+    state.tagBridge.dirty = !!raw.dirty;
+    state.tagBridge.serverUpdatedAt = raw.serverUpdatedAt ?? null;
+    applyBridgeMemberLabels();
+  } catch {
+    /* ignore */
+  }
+}
+
+function persistBridgeDraft() {
+  try {
+    localStorage.setItem(
+      TAG_BRIDGE_DRAFT_KEY,
+      JSON.stringify({
+        entries: state.tagBridge.entries,
+        dirty: state.tagBridge.dirty,
+        serverUpdatedAt: state.tagBridge.serverUpdatedAt,
+      }),
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+function applyBridgeMemberLabels() {
+  state.tagBridgeMemberLabels = {};
+  for (const entry of state.tagBridge.entries) {
+    const label = (entry.label || "").trim();
+    if (!label) continue;
+    for (const m of entry.members || []) {
+      if (m.source && m.tag) state.tagBridgeMemberLabels[`${m.source}\0${m.tag}`] = label;
+    }
+  }
+}
+
+function setBridgeStatus(msg, isError = false) {
+  if (!els.tagBridgeStatus) return;
+  els.tagBridgeStatus.textContent = msg || "";
+  els.tagBridgeStatus.classList.toggle("error", isError);
+  els.tagBridgeStatus.classList.toggle("ok", !!msg && !isError);
+}
+
+function markBridgeDirty() {
+  state.tagBridge.dirty = true;
+  persistBridgeDraft();
+  if (els.tagBridgeDirty) els.tagBridgeDirty.hidden = false;
+}
+
+function syncBridgeDirtyUi() {
+  if (els.tagBridgeDirty) els.tagBridgeDirty.hidden = !state.tagBridge.dirty;
+}
+
+function buildBridgeMemberRow(entry, member, memberIdx) {
+  const row = document.createElement("div");
+  row.className = "bridge-member-row";
+  const sel = document.createElement("select");
+  sel.className = "select";
+  for (const s of BRIDGE_SOURCES) {
+    const opt = document.createElement("option");
+    opt.value = s;
+    opt.textContent = s;
+    if (member.source === s) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  sel.addEventListener("change", () => {
+    member.source = sel.value;
+    markBridgeDirty();
+    applyBridgeMemberLabels();
+  });
+  const tagIn = document.createElement("input");
+  tagIn.type = "text";
+  tagIn.className = "field";
+  tagIn.placeholder = "タグ名";
+  tagIn.value = member.tag || "";
+  tagIn.addEventListener("input", () => {
+    member.tag = tagIn.value;
+    markBridgeDirty();
+    applyBridgeMemberLabels();
+  });
+  const rm = document.createElement("button");
+  rm.type = "button";
+  rm.className = "icon-btn";
+  rm.setAttribute("aria-label", "メンバーを削除");
+  rm.textContent = "×";
+  rm.addEventListener("click", () => {
+    entry.members.splice(memberIdx, 1);
+    markBridgeDirty();
+    renderTagBridgeSettings();
+  });
+  row.append(sel, tagIn, rm);
+  return row;
+}
+
+function buildBridgeEntryEl(entry, entryIdx) {
+  const wrap = document.createElement("div");
+  wrap.className = "bridge-entry";
+  const labelIn = document.createElement("input");
+  labelIn.type = "text";
+  labelIn.className = "field";
+  labelIn.placeholder = "代表ラベル（例: 制服）";
+  labelIn.value = entry.label || "";
+  labelIn.addEventListener("input", () => {
+    entry.label = labelIn.value;
+    markBridgeDirty();
+    applyBridgeMemberLabels();
+  });
+  const memWrap = document.createElement("div");
+  memWrap.className = "bridge-members";
+  for (let mi = 0; mi < (entry.members || []).length; mi += 1) {
+    memWrap.appendChild(buildBridgeMemberRow(entry, entry.members[mi], mi));
+  }
+  const addMem = document.createElement("button");
+  addMem.type = "button";
+  addMem.className = "link-btn";
+  addMem.textContent = "メンバーを追加";
+  addMem.addEventListener("click", () => {
+    if (!entry.members) entry.members = [];
+    entry.members.push({ source: "auto_tagger", tag: "" });
+    markBridgeDirty();
+    renderTagBridgeSettings();
+  });
+  const del = document.createElement("button");
+  del.type = "button";
+  del.className = "link-btn";
+  del.textContent = "エントリを削除";
+  del.addEventListener("click", () => {
+    state.tagBridge.entries.splice(entryIdx, 1);
+    markBridgeDirty();
+    applyBridgeMemberLabels();
+    renderTagBridgeSettings();
+  });
+  wrap.append(labelIn, memWrap, addMem, del);
+  return wrap;
+}
+
+function renderTagBridgeSettings() {
+  if (!els.tagBridgeList) return;
+  syncBridgeDirtyUi();
+  els.tagBridgeList.innerHTML = "";
+  if (!state.tagBridge.entries.length) {
+    const p = document.createElement("p");
+    p.className = "set-note";
+    p.textContent = "エントリがありません。";
+    els.tagBridgeList.appendChild(p);
+    return;
+  }
+  state.tagBridge.entries.forEach((entry, idx) => {
+    if (!entry.members) entry.members = [];
+    els.tagBridgeList.appendChild(buildBridgeEntryEl(entry, idx));
+  });
+}
+
+async function fetchTagBridgeFromServer({ force = false } = {}) {
+  if (!state.useApi) return;
+  if (state.tagBridge.dirty && !force) return;
+  try {
+    const res = await fetch("/api/settings/tag-bridge");
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    const data = await res.json();
+    state.tagBridge.entries = (data.entries || []).map((e) => ({
+      label: e.label,
+      members: (e.members || []).map((m) => ({ source: m.source, tag: m.tag })),
+    }));
+    state.tagBridge.serverUpdatedAt = data.updated_at ?? null;
+    state.tagBridge.dirty = false;
+    persistBridgeDraft();
+    applyBridgeMemberLabels();
+    renderTagBridgeSettings();
+    setBridgeStatus(state.tagBridge.serverUpdatedAt ? `サーバー版 ${state.tagBridge.serverUpdatedAt}` : "");
+  } catch (err) {
+    setBridgeStatus(`読込失敗: ${err.message}`, true);
+  }
+}
+
+async function pushTagBridgeToServer() {
+  if (!state.useApi) {
+    setBridgeStatus("API 未接続のため保存できません。", true);
+    return;
+  }
+  const entries = state.tagBridge.entries
+    .map((e) => ({
+      label: (e.label || "").trim(),
+      members: (e.members || [])
+        .map((m) => ({ source: m.source, tag: (m.tag || "").trim() }))
+        .filter((m) => m.tag),
+    }))
+    .filter((e) => e.label && e.members.length);
+  els.tagBridgePush.disabled = true;
+  setBridgeStatus("保存中…");
+  try {
+    const res = await fetch("/api/settings/tag-bridge", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version: 1, entries }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || res.statusText);
+    state.tagBridge.entries = (data.entries || entries).map((e) => ({
+      label: e.label,
+      members: (e.members || []).map((m) => ({ source: m.source, tag: m.tag })),
+    }));
+    state.tagBridge.serverUpdatedAt = data.updated_at ?? null;
+    state.tagBridge.dirty = false;
+    persistBridgeDraft();
+    applyBridgeMemberLabels();
+    renderTagBridgeSettings();
+    setBridgeStatus("サーバーに保存しました。");
+    if (state.activeId) renderDetail(filteredImages());
+    void refreshList();
+  } catch (err) {
+    setBridgeStatus(`保存失敗: ${err.message}`, true);
+  } finally {
+    els.tagBridgePush.disabled = false;
+  }
+}
+
+function discardTagBridgeDraft() {
+  if (state.tagBridge.dirty && !window.confirm("未保存の変更を破棄してサーバーから読み直しますか？")) return;
+  void fetchTagBridgeFromServer({ force: true });
+}
+
+function exportTagBridgeJson() {
+  const blob = new Blob(
+    [
+      JSON.stringify(
+        { version: 1, updated_at: state.tagBridge.serverUpdatedAt, entries: state.tagBridge.entries },
+        null,
+        2,
+      ),
+    ],
+    { type: "application/json" },
+  );
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "tag_bridge.json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function importTagBridgeJson(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      state.tagBridge.entries = (data.entries || []).map((e) => ({
+        label: e.label,
+        members: (e.members || []).map((m) => ({ source: m.source, tag: m.tag })),
+      }));
+      markBridgeDirty();
+      applyBridgeMemberLabels();
+      renderTagBridgeSettings();
+      setBridgeStatus("インポートしました。サーバーに保存で反映。");
+    } catch {
+      setBridgeStatus("JSON の形式が正しくありません。", true);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function bindTagBridgeEvents() {
+  els.tagBridgeAdd?.addEventListener("click", () => {
+    state.tagBridge.entries.push({
+      label: "",
+      members: [{ source: "auto_tagger", tag: "" }],
+    });
+    markBridgeDirty();
+    renderTagBridgeSettings();
+  });
+  els.tagBridgePush?.addEventListener("click", () => void pushTagBridgeToServer());
+  els.tagBridgeDiscard?.addEventListener("click", () => discardTagBridgeDraft());
+  els.tagBridgeExport?.addEventListener("click", () => exportTagBridgeJson());
+  els.tagBridgeImport?.addEventListener("change", (e) => {
+    const f = e.target.files?.[0];
+    if (f) importTagBridgeJson(f);
+    e.target.value = "";
+  });
+}
+
 /* ── Overlays (filter drawer on compact screens, settings) ── */
 
 let openOverlayName = null;
@@ -1913,7 +2207,11 @@ function openOverlay(name) {
     els.settings.classList.add("open");
     els.settings.setAttribute("aria-hidden", "false");
     els.btnSettings.setAttribute("aria-expanded", "true");
-    if (state.useApi) void refreshIndexStatus();
+    if (state.useApi) {
+      void refreshIndexStatus();
+      void fetchTagBridgeFromServer();
+    }
+    renderTagBridgeSettings();
     els.settings.querySelector("button, input")?.focus();
   } else {
     els.app.classList.add("filters-open");
@@ -1998,6 +2296,7 @@ async function setApiEnabled(on) {
   if (on) {
     await tryLoadApi();
     await refreshIndexStatus();
+    await fetchTagBridgeFromServer();
   } else {
     state.apiImages = null;
     state.apiTotal = null;
@@ -2105,8 +2404,20 @@ async function init() {
     apiStatus: "api-status",
     labIndexBody: "lab-index-body",
     labIndexRefresh: "lab-index-refresh",
+    tagBridgeList: "tag-bridge-list",
+    tagBridgeDirty: "tag-bridge-dirty",
+    tagBridgePush: "tag-bridge-push",
+    tagBridgeAdd: "tag-bridge-add",
+    tagBridgeDiscard: "tag-bridge-discard",
+    tagBridgeExport: "tag-bridge-export",
+    tagBridgeImport: "tag-bridge-import",
+    tagBridgeStatus: "tag-bridge-status",
   };
   for (const [key, id] of Object.entries(ids)) els[key] = document.getElementById(id);
+
+  loadBridgeDraftFromStorage();
+  renderTagBridgeSettings();
+  bindTagBridgeEvents();
 
   applyTheme();
   document.documentElement.style.setProperty("--thumb", `${state.thumbSize}px`);

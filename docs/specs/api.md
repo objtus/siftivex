@@ -73,6 +73,15 @@ Basic 認証（Tailscale 内限定 + アプリレベル）。
 | GET | `/api/images/{image_id}/preview` | 詳細プレビュー（1000〜1500px） | TBD |
 | GET | `/api/images/{image_id}/original` | 原寸 | TBD |
 
+### 設定（Tag Bridge）
+
+英語 tagger と日本語 filename 等を代表ラベルで検索する辞書。詳細は [tag-bridge.md](tag-bridge.md)。
+
+| Method | Path | 説明 | 状態 |
+|---|---|---|---|
+| GET | `/api/settings/tag-bridge` | `data/tag_bridge.json` を返す（無ければ空 entries） | 実装済 |
+| PUT | `/api/settings/tag-bridge` | 検証後に保存（400: 重複 label / member） | 実装済 |
+
 ### インデックス管理
 
 | Method | Path | 説明 | 状態 |

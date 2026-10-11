@@ -5,11 +5,15 @@ from __future__ import annotations
 import re
 import sqlite3
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from siftivex.embeddings import Embedder, EmbeddingStore
-from siftivex.paths import DEFAULT_THUMBNAILS_DIR
+from siftivex.paths import DEFAULT_THUMBNAILS_DIR, DEFAULT_TAG_BRIDGE_PATH
+from siftivex.tag_bridge import TagBridgeDoc, TagBridgeMember, expand_include_token, load_tag_bridge
 from siftivex.tags_db import effective_tags
 from siftivex.thumbnails import thumbnail_dir
+
+_TAG_SOURCES_SQL = "('filename', 'auto_tagger', 'auto_d1', 'inferred_ja', 'manual_added')"
 
 # Unquoted value is \S+ only; use tag:"black hair" for spaced Danbooru-style tags.
 TAG_PATTERN = re.compile(
@@ -89,49 +93,80 @@ def parse_query(raw: str) -> ParsedQuery:
     return parsed
 
 
+def _tag_exists_fragment(
+    alias: str,
+    *,
+    tag: str,
+    source: str | None,
+) -> tuple[str, list]:
+    """One tag match; source None = any machine source."""
+    if source:
+        sql = f"""
+            EXISTS (
+                SELECT 1 FROM image_tags t
+                WHERE t.image_id = {alias}.image_id
+                  AND t.tag = ?
+                  AND t.source = ?
+                  AND t.tag NOT IN (
+                      SELECT tag FROM image_tags r
+                      WHERE r.image_id = {alias}.image_id AND r.source = 'manual_removed'
+                  )
+            )
+            """
+        return sql, [tag, source]
+    sql = f"""
+        EXISTS (
+            SELECT 1 FROM image_tags t
+            WHERE t.image_id = {alias}.image_id
+              AND t.tag = ?
+              AND t.source IN {_TAG_SOURCES_SQL}
+              AND t.tag NOT IN (
+                  SELECT tag FROM image_tags r
+                  WHERE r.image_id = {alias}.image_id AND r.source = 'manual_removed'
+              )
+        )
+        """
+    return sql, [tag]
+
+
+def _include_groups(parsed: ParsedQuery, bridge: TagBridgeDoc | None) -> list[list[TagBridgeMember]]:
+    groups: list[list[TagBridgeMember]] = []
+    for token in parsed.include_tags:
+        expanded = expand_include_token(token, bridge)
+        if expanded:
+            groups.append(expanded)
+        else:
+            groups.append([TagBridgeMember(source="", tag=token)])
+    return groups
+
+
 def _tag_filter_clause(
     parsed: ParsedQuery,
     route_tag: str | None,
     *,
     alias: str = "i",
+    bridge: TagBridgeDoc | None = None,
 ) -> tuple[str, list]:
     clauses = [f"{alias}.status = 'active'"]
     params: list = []
     if route_tag:
         clauses.append(f"{alias}.route_tag = ?")
         params.append(route_tag)
-    for tag in parsed.include_tags:
-        clauses.append(
-            f"""
-            EXISTS (
-                SELECT 1 FROM image_tags t
-                WHERE t.image_id = {alias}.image_id
-                  AND t.tag = ?
-                  AND t.source IN ('auto', 'filename', 'auto_tagger', 'auto_d1', 'inferred_ja', 'manual_added')
-                  AND t.tag NOT IN (
-                      SELECT tag FROM image_tags r
-                      WHERE r.image_id = {alias}.image_id AND r.source = 'manual_removed'
-                  )
-            )
-            """
-        )
-        params.append(tag)
+    for group in _include_groups(parsed, bridge):
+        parts: list[str] = []
+        for member in group:
+            src = member.source if member.source else None
+            frag, frag_params = _tag_exists_fragment(alias, tag=member.tag, source=src)
+            parts.append(frag.strip())
+            params.extend(frag_params)
+        if len(parts) == 1:
+            clauses.append(parts[0])
+        else:
+            clauses.append(f"({' OR '.join(parts)})")
     for tag in parsed.exclude_tags:
-        clauses.append(
-            f"""
-            NOT EXISTS (
-                SELECT 1 FROM image_tags t
-                WHERE t.image_id = {alias}.image_id
-                  AND t.tag = ?
-                  AND t.source IN ('auto', 'filename', 'auto_tagger', 'auto_d1', 'inferred_ja', 'manual_added')
-                  AND t.tag NOT IN (
-                      SELECT tag FROM image_tags r
-                      WHERE r.image_id = {alias}.image_id AND r.source = 'manual_removed'
-                  )
-            )
-            """
-        )
-        params.append(tag)
+        frag, frag_params = _tag_exists_fragment(alias, tag=tag, source=None)
+        clauses.append(f"NOT ({frag.strip()})")
+        params.extend(frag_params)
     return " AND ".join(clauses), params
 
 
@@ -156,8 +191,9 @@ def search_by_tags(
     route_tag: str | None = None,
     limit: int = 60,
     offset: int = 0,
+    bridge: TagBridgeDoc | None = None,
 ) -> SearchResult:
-    where, params = _tag_filter_clause(parsed, route_tag)
+    where, params = _tag_filter_clause(parsed, route_tag, bridge=bridge)
     total = conn.execute(
         f"SELECT COUNT(*) FROM images i WHERE {where}",
         params,
@@ -184,9 +220,12 @@ def search_semantic(
     route_tag: str | None = None,
     limit: int = 60,
     offset: int = 0,
+    bridge: TagBridgeDoc | None = None,
 ) -> SearchResult:
     if not parsed.text:
-        return search_by_tags(conn, parsed, route_tag=route_tag, limit=limit, offset=offset)
+        return search_by_tags(
+            conn, parsed, route_tag=route_tag, limit=limit, offset=offset, bridge=bridge
+        )
 
     vector = embedder.embed_text(parsed.text)
     fetch = min(max(limit + offset, limit) * 20, 2000)
@@ -194,7 +233,7 @@ def search_semantic(
     if not ann_hits:
         return SearchResult(total=0, items=[], parsed=parsed)
 
-    where, params = _tag_filter_clause(parsed, route_tag)
+    where, params = _tag_filter_clause(parsed, route_tag, bridge=bridge)
     id_list = [image_id for image_id, _ in ann_hits]
     placeholders = ", ".join("?" for _ in id_list)
     rows = conn.execute(
@@ -240,7 +279,10 @@ def search_images(
     embedder: Embedder | None = None,
     extra_include_tags: list[str] | None = None,
     extra_exclude_tags: list[str] | None = None,
+    tag_bridge_path: Path | None = None,
 ) -> SearchResult:
+    bridge_path = tag_bridge_path or DEFAULT_TAG_BRIDGE_PATH
+    bridge = load_tag_bridge(bridge_path)
     parsed = merge_parsed_query(
         parse_query(query),
         extra_include=extra_include_tags,
@@ -255,8 +297,11 @@ def search_images(
             route_tag=route_tag,
             limit=limit,
             offset=offset,
+            bridge=bridge,
         )
-    return search_by_tags(conn, parsed, route_tag=route_tag, limit=limit, offset=offset)
+    return search_by_tags(
+        conn, parsed, route_tag=route_tag, limit=limit, offset=offset, bridge=bridge
+    )
 
 
 def image_to_dict(conn: sqlite3.Connection, hit: SearchHit) -> dict:

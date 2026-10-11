@@ -219,6 +219,26 @@
         <dl class="meta-grid" id="lab-index-body"></dl>
       </section>
 
+      <section class="set-section" id="tag-bridge-section">
+        <div class="fp-title-row">
+          <h2 class="info-label">タグの橋渡し</h2>
+          <span class="bridge-dirty" id="tag-bridge-dirty" hidden>未保存</span>
+        </div>
+        <p class="set-note" id="tag-bridge-note">代表ラベルで filename と Tagger などをまとめて検索します。編集はこの端末に下書き保存され、「サーバーに保存」で反映されます。</p>
+        <div class="bridge-list" id="tag-bridge-list"></div>
+        <button type="button" class="btn bridge-add" id="tag-bridge-add">エントリを追加</button>
+        <div class="bridge-actions">
+          <button type="button" class="btn primary" id="tag-bridge-push">サーバーに保存</button>
+          <button type="button" class="link-btn" id="tag-bridge-discard">破棄</button>
+          <button type="button" class="link-btn" id="tag-bridge-export">エクスポート</button>
+          <label class="link-btn bridge-import-label">
+            インポート
+            <input type="file" id="tag-bridge-import" accept="application/json,.json" hidden>
+          </label>
+        </div>
+        <p class="set-note bridge-status" id="tag-bridge-status" aria-live="polite"></p>
+      </section>
+
       <section class="set-section">
         <h2 class="info-label">キー操作</h2>
         <dl class="keys">

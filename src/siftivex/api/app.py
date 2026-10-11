@@ -3,13 +3,19 @@
 from functools import lru_cache
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from siftivex.db import get_connection
 from siftivex.embeddings import Embedder, EmbeddingStore
 from siftivex.jobs import retag_image
-from siftivex.paths import DEFAULT_DB_PATH, DEFAULT_LANCE_PATH, DEFAULT_THUMBNAILS_DIR
+from siftivex.paths import (
+    DEFAULT_DB_PATH,
+    DEFAULT_LANCE_PATH,
+    DEFAULT_TAG_BRIDGE_PATH,
+    DEFAULT_THUMBNAILS_DIR,
+)
+from siftivex.tag_bridge import load_tag_bridge, parse_tag_bridge, save_tag_bridge, tag_bridge_to_dict
 from siftivex.search import image_to_dict, search_images
 from siftivex.tag_vocabulary import PROMPT_REVISION
 from siftivex.tag_stack_status import tag_stack_by_route, tag_stack_summary
@@ -70,6 +76,7 @@ def list_images(
             embedder=_embedder(),
             extra_include_tags=include_tag,
             extra_exclude_tags=exclude_tag,
+            tag_bridge_path=DEFAULT_TAG_BRIDGE_PATH,
         )
         return {
             "total": parsed.total,
@@ -227,6 +234,22 @@ def get_preview(image_id: str) -> FileResponse:
     if not path.is_file():
         raise HTTPException(status_code=404, detail="preview not found")
     return FileResponse(path, media_type="image/webp")
+
+
+@app.get("/api/settings/tag-bridge")
+def get_tag_bridge_settings() -> dict:
+    doc = load_tag_bridge(DEFAULT_TAG_BRIDGE_PATH)
+    return tag_bridge_to_dict(doc)
+
+
+@app.put("/api/settings/tag-bridge")
+def put_tag_bridge_settings(body: dict = Body(...)) -> dict:
+    try:
+        doc = parse_tag_bridge(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    saved = save_tag_bridge(DEFAULT_TAG_BRIDGE_PATH, doc)
+    return tag_bridge_to_dict(saved)
 
 
 @app.get("/api/index/status")

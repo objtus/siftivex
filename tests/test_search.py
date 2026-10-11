@@ -70,8 +70,8 @@ def test_search_by_tags_and_route(db_conn: sqlite3.Connection, tmp_path: Path):
     write_png(b, (0, 1, 0))
     ra = ingest_file(a, db_conn, route_tag="route/a", skip_ocr=True)
     rb = ingest_file(b, db_conn, route_tag="route/b", skip_ocr=True)
-    replace_tags(db_conn, ra.image_id, "auto", ["制服"])
-    replace_tags(db_conn, rb.image_id, "auto", ["制服", "未分類"])
+    replace_tags(db_conn, ra.image_id, "filename", ["制服"])
+    replace_tags(db_conn, rb.image_id, "filename", ["制服", "未分類"])
     db_conn.commit()
 
     result = search_by_tags(

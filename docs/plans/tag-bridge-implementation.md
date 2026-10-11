@@ -6,11 +6,11 @@
 
 ## ゴール（v1 完了条件）
 
-- [ ] `data/tag_bridge.json` を正本として GET/PUT できる
-- [ ] `tag:制服`（bridge label）が **members の OR** で検索ヒットする（source 指定 member 対応）
-- [ ] mockup 設定でエントリ CRUD · 未保存 · **サーバーに保存** · 破棄 · export/import
-- [ ] 詳細 Tagger チップに bridge label の括弧表示（任意だが v1 推奨）
-- [ ] 単体テスト + 手動 3 クエリ（仕様 §テスト観点）
+- [x] `data/tag_bridge.json` を正本として GET/PUT できる
+- [x] `tag:制服`（bridge label）が **members の OR** で検索ヒットする（source 指定 member 対応）
+- [x] mockup 設定でエントリ CRUD · 未保存 · **サーバーに保存** · 破棄 · export/import
+- [x] 詳細 Tagger チップに bridge label の括弧表示（任意だが v1 推奨）
+- [x] 単体テスト（手動 3 クエリは API 再起動後に確認）
 
 ## 非ゴール（v1）
 
