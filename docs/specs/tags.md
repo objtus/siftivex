@@ -135,13 +135,15 @@ IMG_0265-建物-夕方-横.JPG    → 建物, 夕方, 横
 表示タグ = ∪(filename, auto_tagger, auto_d1, inferred_ja, …) + manual_added − manual_removed
 ```
 
-（実装移行中: `search.py` / `effective_tags` はまだ `auto` を参照している場合あり — M3 で更新。）
+実装: `effective_tags()` · 検索 SQL（`manual_removed` 除外）。レガシー `auto` 行が残る DB では表示に含まれうる。
 
 | 操作 | 書き込み先 | 再タグ（tagger/d1）時 |
 |---|---|---|
 | タグ追加 | `manual_added` | 保持 |
-| タグ削除 | `manual_removed` | 保持 |
+| 表示から外す | `manual_removed`（機械 source 行は残す） | 保持 |
 | 再タグ付け | 対象 **source** を replace | manual レイヤーは不変 |
+
+**UI / API の詳細**（PATCH · mockup TagEditor · テスト）→ **[tag-editing.md](tag-editing.md)** · [decisions/tag-editing.md](../decisions/tag-editing.md)
 
 ## 一括リネーム
 

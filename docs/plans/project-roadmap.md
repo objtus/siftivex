@@ -126,8 +126,9 @@ flowchart TD
 1. ✅ M0〜M2  本番 DB（tagger/d1 ~40k）
 2. 🟡 M3      検索/API/mockup — 残: ingest 増分 tagger · 移行チェックリスト
 3. ~~Phase 2 実利用検証~~ ✅ 2026-10-12
-4. **次**     Tag Bridge — [tag-bridge-implementation.md](tag-bridge-implementation.md) · M4 · ingest 増分
-5. 後         Phase 3 編集 · React 昇格 · M5 Gemma/VLM caption
+4. ✅ Tag Bridge v1 — [tag-bridge-implementation.md](tag-bridge-implementation.md)
+5. **次**     **タグ編集 v1** — [tag-editing-implementation.md](tag-editing-implementation.md) · M4 · ingest 増分
+6. 後         Phase 3 残り（OCR · アルバム · 一括）· React 昇格 · M5
 ```
 
 ---
@@ -163,7 +164,8 @@ flowchart TD
 |---|---|
 | README · roadmap · ui.md · mockup-phase2 | ✅ 2026-10-12 同期 |
 | blueprint §タグ付け | ADR + 移行計画が優先 |
-| query-language.md · api.md | 部分実装 · 仕様確定が残り |
+| query-language.md · api.md | 部分実装 · bridge/tag:= 反映済 · PATCH tags は tag-editing 草案 |
+| tag-editing | ✅ ADR + 仕様 + 実装計画（2026-10-12） |
 | ingest 増分 → tagger キュー | コード監査 · cron 文書化 |
 | ADR accepted | 移行完了後に role-based-model-stack を accepted 化 |
 

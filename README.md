@@ -6,7 +6,7 @@
 
 | 項目 | 状態 |
 |---|---|
-| フェーズ | Phase 1–2 完了 · **次: 索引 M4 / Phase 3 / タグ精度** |
+| フェーズ | Phase 1–2 完了 · Tag Bridge v1 · **次: タグ編集 v1**（[計画](docs/plans/tag-editing-implementation.md)） |
 | 索引 v2 | **M0〜M2 完了** · M3 おおむね完了 · M4（`inferred_ja`）未着手 |
 | DB | 40,320 images / 40,305 embedded · tagger+d1 各 40,305 枚 |
 | タグ方針 | **VLM `auto` 廃止済** → filename + tagger + d1 |

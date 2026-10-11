@@ -40,8 +40,18 @@ Basic 認証（Tailscale 内限定 + アプリレベル）。
 | Method | Path | 説明 | 状態 |
 |---|---|---|---|
 | GET | `/api/tags` | タグ一覧（利用頻度順/五十音順） | TBD |
-| PATCH | `/api/images/{image_id}/tags` | タグ追加/削除（差分レイヤー） | TBD |
+| PATCH | `/api/images/{image_id}/tags` | 手動 `add` / `remove` / `restore`（差分レイヤー） | 計画済 · [tag-editing.md](tag-editing.md) |
 | POST | `/api/images/bulk/tags` | 一括タグ操作 | TBD |
+
+#### `PATCH /api/images/{image_id}/tags`（草案）
+
+Body: `{ "add": string[], "remove": string[], "restore": string[] }` — いずれか 1 つ以上必須。
+
+- **add** → `manual_added`（既 effective なら no-op）
+- **remove** → 非表示（`manual_removed` · 手動のみなら `manual_added` 削除）
+- **restore** → `manual_removed` 解除
+
+200: 更新後 `tags` + `tag_sources`。機械 source は変更しない。
 
 ### OCR
 

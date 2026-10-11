@@ -55,15 +55,21 @@ info-panel:   作品コンテキスト · page strip · タグ（source 別）·
 | Settings | `#settings`, `#set-api`, `#theme-seg` | API · 索引 · テーマ | ✅ |
 | OriginBreadcrumb | `#breadcrumb` | 起点履歴（2 件以上で表示） | ✅ |
 
-### Phase 3 以降（mockup v3 では未実装）
+### Phase 3 — TagEditor（計画 · [tag-editing.md](tag-editing.md)）
 
-| コンポーネント | 役割 |
-|---|---|
-| TagEditor | タグ追加/削除 |
-| OcrEditor | OCR 編集 |
-| BulkActionBar | 一括操作 |
-| SimilarPanel | 類似画像（CLIP 還流） |
-| VlmCaptionPanel | オンデマンドキャプション |
+| コンポーネント | 役割 | 状態 |
+|---|---|---|
+| TagEditor | 詳細 `#detail-tags` · 編集トグル · 追加/非表示/復元 · PATCH | 未実装 |
+| OcrEditor | OCR 編集 | 未実装 |
+| BulkActionBar | 一括操作 | 未実装 |
+| SimilarPanel | 類似画像（CLIP 還流） | 未実装 |
+| VlmCaptionPanel | オンデマンドキャプション | 未実装 |
+
+**TagEditor v1**: API 接続時のみ。「タグを編集」ON でチップ × = 非表示 · 入力 = 追加 · `manual_removed` を折りたたみ表示。編集中はタグクリックによる **検索フィルタは無効**（誤操作防止）。閲覧時は Phase 2 どおり bridge label クリック → クエリ。
+
+### Phase 3 その他（未実装）
+
+（OcrEditor · BulkActionBar 等 — 上表参照）
 
 ## レイアウト（一覧グリッド）
 
