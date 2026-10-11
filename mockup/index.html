@@ -1,195 +1,237 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" data-theme="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Siftivex — Mockup v2 (PC)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark light">
+  <title>Siftivex</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="mockup.css">
 </head>
 <body>
-  <div class="app layout-b mode-explore" id="app">
-    <header class="header">
-      <div class="logo">Sift<span>ivex</span> <small class="ver">v2</small></div>
-      <span class="mode-badge" id="mode-badge">探索</span>
-      <span class="layout-badge" id="layout-badge">案 B</span>
-      <div class="header-spacer"></div>
-      <span class="stat" id="result-count">—</span>
-      <div class="view-tabs" role="tablist" aria-label="表示モード">
-        <button type="button" class="active" data-view="grid">グリッド</button>
-        <button type="button" data-view="table">リスト</button>
+  <svg width="0" height="0" class="sprite" aria-hidden="true">
+    <symbol id="i-search" viewBox="0 0 20 20"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m13 13 4.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+    <symbol id="i-filter" viewBox="0 0 20 20"><path d="M3 5h14M6 10h8M8.5 15h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 20 20"><path d="M3 6h8M15 6h2M3 14h2M9 14h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="13" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="7" cy="14" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/></symbol>
+    <symbol id="i-close" viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+    <symbol id="i-back" viewBox="0 0 20 20"><path d="M16 10H4m5-5-5 5 5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 20 20"><path d="m12.5 4-6 6 6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-next" viewBox="0 0 20 20"><path d="m7.5 4 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-justified" viewBox="0 0 20 20"><path d="M3 4h5v5H3zM10 4h7v5h-7zM3 11h8v5H3zM13 11h4v5h-4z" fill="currentColor"/></symbol>
+    <symbol id="i-masonry" viewBox="0 0 20 20"><path d="M3 3h6v8H3zM11 3h6v5h-6zM3 13h6v4H3zM11 10h6v7h-6z" fill="currentColor"/></symbol>
+    <symbol id="i-square" viewBox="0 0 20 20"><path d="M3 3h6v6H3zM11 3h6v6h-6zM3 11h6v6H3zM11 11h6v6h-6z" fill="currentColor"/></symbol>
+    <symbol id="i-table" viewBox="0 0 20 20"><path d="M3 4h3v3H3zM8 5h9v1.2H8zM3 8.5h3v3H3zM8 9.4h9v1.2H8zM3 13h3v3H3zM8 13.9h9v1.2H8z" fill="currentColor"/></symbol>
+    <symbol id="i-info" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 9v5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="10" cy="6.3" r="1" fill="currentColor"/></symbol>
+    <symbol id="i-external" viewBox="0 0 20 20"><path d="M11 4h5v5M16 4l-7 7M14 12v4H4V6h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </svg>
+
+  <div class="app mode-explore" id="app" aria-busy="true">
+    <header class="topbar">
+      <button type="button" class="icon-btn only-compact" id="btn-filters" aria-label="絞り込みを開く" aria-controls="filter-pane" aria-expanded="false">
+        <svg><use href="#i-filter"/></svg>
+      </button>
+      <span class="brand">Siftivex</span>
+      <div class="search">
+        <svg class="search-icon" aria-hidden="true"><use href="#i-search"/></svg>
+        <input type="search" id="query-input" class="search-input" autocomplete="off" spellcheck="false"
+          placeholder="tag:名前　-tag:除外　キーワード" aria-label="検索">
+        <kbd class="search-kbd" aria-hidden="true">/</kbd>
       </div>
-      <button type="button" class="btn-ghost" id="btn-back-explore" hidden>← 探索に戻る</button>
+      <button type="button" class="icon-btn" id="btn-settings" aria-label="設定を開く" aria-controls="settings" aria-expanded="false">
+        <svg><use href="#i-settings"/></svg>
+      </button>
     </header>
 
-    <div class="bulk-bar" id="bulk-bar">
-      <span id="bulk-count">0 件選択</span>
-      <button type="button">タグ追加</button>
-      <button type="button">アルバムに追加</button>
-    </div>
+    <div class="workspace">
+      <aside class="filter-pane" id="filter-pane" aria-label="絞り込み">
+        <div class="sheet-head only-compact">
+          <span>絞り込み</span>
+          <button type="button" class="icon-btn" data-close="filters" aria-label="閉じる"><svg><use href="#i-close"/></svg></button>
+        </div>
 
-    <div class="workspace" id="workspace">
-      <aside class="filter-pane" id="filter-pane">
-        <div class="pane-title">フィルタ</div>
-        <input type="search" class="query-input" id="query-input"
-          placeholder="tag:1girl tag:種類/写真 -tag:… または自然言語" spellcheck="false">
-        <nav class="origin-breadcrumb" id="breadcrumb" aria-label="起点履歴"></nav>
-        <div class="route-tabs" role="tablist" aria-label="ルート">
-          <button type="button" class="active" data-route="all">すべて</button>
-          <button type="button" data-route="route/under-iphone">under</button>
-          <button type="button" data-route="route/pixiv">pixiv</button>
-        </div>
-        <div class="chip-row" id="chip-row"></div>
-        <p class="query-note" id="query-note" hidden>API 検索ヒント</p>
-        <div class="sidebar-head">
-          <input type="search" id="tag-filter" placeholder="タグを検索…">
-        </div>
-        <div class="tag-list" id="tag-list"></div>
+        <section class="fp-section">
+          <h2 class="fp-title">ルート</h2>
+          <div class="route-list" id="route-list" role="radiogroup" aria-label="ルート"></div>
+        </section>
+
+        <section class="fp-section" id="active-filters">
+          <div class="fp-title-row">
+            <h2 class="fp-title">絞り込み中</h2>
+            <button type="button" class="link-btn" id="btn-clear-filters">すべて解除</button>
+          </div>
+          <div class="chip-row" id="chip-row"></div>
+          <p class="query-error" id="query-error" role="alert" hidden></p>
+        </section>
+
+        <section class="fp-section fp-facets">
+          <div class="fp-title-row">
+            <h2 class="fp-title">結果に含まれるタグ</h2>
+            <span class="fp-sub" id="facet-basis"></span>
+          </div>
+          <input type="search" id="tag-filter" class="field" placeholder="タグを探す" autocomplete="off" aria-label="タグを探す">
+          <div class="tag-list" id="tag-list"></div>
+        </section>
       </aside>
 
-      <div class="stage" id="stage">
-        <section class="list-pane" id="list-pane">
-          <div class="list-toolbar">
-            <label>並び替え
-              <select id="sort-select">
+      <main class="stage">
+        <section class="list-pane" id="list-pane" aria-label="一覧">
+          <div class="toolbar">
+            <span class="count" id="result-count" aria-live="polite">—</span>
+            <nav class="history" id="breadcrumb" aria-label="検索の履歴"></nav>
+            <div class="toolbar-spacer"></div>
+            <label class="tb-field">
+              <span class="tb-label">並び</span>
+              <select id="sort-select" class="select">
                 <option value="file_name">ファイル名</option>
                 <option value="score">関連度</option>
                 <option value="tags">タグ数</option>
               </select>
             </label>
-            <button type="button" class="btn-load-more" id="btn-load-more" hidden>
-              さらに読み込み
-            </button>
-            <span class="hint" id="nav-hint">クリックで詳細 · Shift+クリックで複数選択</span>
+            <div class="seg" id="layout-seg" role="radiogroup" aria-label="並べ方">
+              <button type="button" role="radio" data-layout="justified" title="行揃え" aria-label="行揃え"><svg><use href="#i-justified"/></svg></button>
+              <button type="button" role="radio" data-layout="masonry" title="Masonry" aria-label="Masonry"><svg><use href="#i-masonry"/></svg></button>
+              <button type="button" role="radio" data-layout="square" title="正方形" aria-label="正方形"><svg><use href="#i-square"/></svg></button>
+              <button type="button" role="radio" data-layout="table" title="表" aria-label="表"><svg><use href="#i-table"/></svg></button>
+            </div>
+            <label class="tb-field size-field" title="サムネの大きさ">
+              <span class="visually-hidden">サムネの大きさ</span>
+              <input type="range" id="thumb-size" min="80" max="280" step="10" value="170">
+            </label>
           </div>
-          <div class="image-grid" id="image-grid"></div>
-          <div class="image-table-wrap" id="table-wrap" hidden>
-            <table class="image-table">
-              <thead>
-                <tr>
-                  <th class="col-thumb"></th>
-                  <th class="col-filename">ファイル名</th>
-                  <th class="col-tags">タグ</th>
-                  <th class="col-ocr">OCR</th>
-                  <th class="col-score">スコア</th>
-                </tr>
-              </thead>
-              <tbody id="table-body"></tbody>
-            </table>
+
+          <div class="list-scroll" id="list-scroll">
+            <div class="image-grid" id="image-grid"></div>
+            <div class="image-table-wrap" id="table-wrap" hidden>
+              <table class="image-table">
+                <thead>
+                  <tr>
+                    <th class="col-thumb"><span class="visually-hidden">サムネ</span></th>
+                    <th class="col-filename">ファイル名</th>
+                    <th class="col-route">ルート</th>
+                    <th class="col-dims">寸法</th>
+                    <th class="col-tags">タグ</th>
+                    <th class="col-score">スコア</th>
+                  </tr>
+                </thead>
+                <tbody id="table-body"></tbody>
+              </table>
+            </div>
+            <div class="list-empty" id="list-empty" hidden></div>
+            <div class="list-foot">
+              <button type="button" class="btn" id="btn-load-more" hidden>さらに読み込む</button>
+              <div class="load-sentinel" id="load-sentinel"></div>
+            </div>
           </div>
         </section>
 
-        <aside class="detail-pane" id="detail-pane">
-          <div class="detail-empty" id="detail-empty">
-            リストから画像を選択<br>
-            <small>← → リスト · [ ] 作品ページ · / 検索</small>
-          </div>
-          <div id="detail-content" class="detail-content" hidden>
-            <header class="detail-topbar">
-              <div class="nav-group">
-                <span class="nav-label">リスト</span>
-                <button type="button" id="detail-prev" title="リスト前">←</button>
+        <section class="viewer" id="detail-pane" aria-label="閲覧">
+          <div class="viewer-empty" id="detail-empty" hidden>一覧から画像を選んでください</div>
+          <div class="viewer-inner" id="detail-content" hidden>
+            <div class="viewer-bar">
+              <button type="button" class="btn" id="btn-back-explore">
+                <svg><use href="#i-back"/></svg><span>一覧へ</span>
+              </button>
+              <div class="stepper" aria-label="一覧の中の位置">
+                <button type="button" class="icon-btn" id="detail-prev" aria-label="前の画像"><svg><use href="#i-prev"/></svg></button>
                 <span class="pos" id="detail-pos">—</span>
-                <button type="button" id="detail-next" title="リスト次">→</button>
+                <button type="button" class="icon-btn" id="detail-next" aria-label="次の画像"><svg><use href="#i-next"/></svg></button>
               </div>
-              <button type="button" class="btn-ghost" id="btn-enter-view" hidden>全画面で見る</button>
-            </header>
+              <div class="toolbar-spacer"></div>
+              <button type="button" class="btn only-narrow" id="btn-info" aria-controls="info-panel" aria-expanded="true">
+                <svg><use href="#i-info"/></svg><span>情報</span>
+              </button>
+            </div>
 
-            <div class="detail-image-wrap" id="detail-image"></div>
-
-            <section class="detail-context" id="detail-context" aria-label="作品情報">
-              <div class="detail-context-head">
-                <h2 class="detail-title" id="detail-title">—</h2>
-                <div class="detail-subline" id="detail-subline"></div>
+            <div class="viewer-body">
+              <div class="viewer-stage" id="viewer-stage">
+                <div class="detail-image-wrap" id="detail-image"></div>
+                <button type="button" class="edge-nav prev" data-nav="-1" aria-label="前の画像"><svg><use href="#i-prev"/></svg></button>
+                <button type="button" class="edge-nav next" data-nav="1" aria-label="次の画像"><svg><use href="#i-next"/></svg></button>
               </div>
-              <div class="detail-page-slot" id="detail-page-slot">
-                <div class="nav-group work-nav-row" id="detail-page-nav">
-                  <span class="nav-label">作品</span>
-                  <button type="button" id="work-prev" disabled title="前のページ">[</button>
-                  <span class="pos" id="work-pos">—</span>
-                  <button type="button" id="work-next" disabled title="次のページ">]</button>
-                </div>
-                <div class="page-strip" id="page-strip"></div>
-              </div>
-            </section>
 
-            <div class="detail-body">
-              <section>
-                <div class="section-head">
-                  <div class="section-title">タグ（レイヤー別）</div>
-                  <button type="button" id="btn-retag" class="btn-ghost btn-retag" hidden title="VLM で auto タグを付け直す（API モード）">再タグ</button>
-                </div>
-                <div class="tag-editor" id="detail-tags"></div>
-              </section>
-              <section>
-                <div class="section-title">ファイル</div>
-                <dl class="meta-grid" id="detail-meta"></dl>
-              </section>
-              <section class="similar-section">
-                <div class="section-title">類似画像</div>
-                <div class="similar-tabs">
-                  <button type="button" class="active" data-tab="color">色味</button>
-                  <button type="button" data-tab="date">時期</button>
-                  <button type="button" data-tab="motif">モチーフ</button>
-                </div>
-                <div class="similar-strip" id="similar-strip"></div>
-                <button type="button" class="btn-reflux" id="btn-similar-reflux">この軸でリストを更新（還流）</button>
-              </section>
+              <aside class="info-panel" id="info-panel" aria-label="画像の情報">
+                <section class="detail-context" id="detail-context">
+                  <h1 class="detail-title" id="detail-title">—</h1>
+                  <div class="detail-subline" id="detail-subline"></div>
+                  <div class="detail-page-slot" id="detail-page-slot">
+                    <div class="work-nav-row">
+                      <span class="info-label">ページ</span>
+                      <div class="stepper">
+                        <button type="button" class="icon-btn" id="work-prev" disabled aria-label="前のページ" title="前のページ（[）"><svg><use href="#i-prev"/></svg></button>
+                        <span class="pos" id="work-pos">—</span>
+                        <button type="button" class="icon-btn" id="work-next" disabled aria-label="次のページ" title="次のページ（]）"><svg><use href="#i-next"/></svg></button>
+                      </div>
+                    </div>
+                    <div class="page-strip" id="page-strip"></div>
+                  </div>
+                </section>
+
+                <section class="info-section">
+                  <h2 class="info-label">タグ</h2>
+                  <div class="detail-tags" id="detail-tags"></div>
+                </section>
+
+                <section class="info-section">
+                  <h2 class="info-label">ファイル</h2>
+                  <dl class="meta-grid" id="detail-meta"></dl>
+                </section>
+              </aside>
             </div>
           </div>
-        </aside>
-      </div>
+        </section>
+      </main>
     </div>
-  </div>
 
-  <aside class="mockup-lab" id="mockup-lab">
-    <div class="lab-head" id="lab-toggle">
-      <strong>Layout Lab</strong>
-      <span>▼</span>
-    </div>
-    <div class="lab-body">
-      <div class="lab-row">
-        <label for="lab-preset">PC レイアウト</label>
-        <select id="lab-preset">
-          <option value="a">案 A — 3ペイン常駐</option>
-          <option value="b" selected>案 B — 探索 ⇔ 閲覧</option>
-        </select>
+    <div class="scrim" id="scrim" hidden></div>
+
+    <aside class="settings" id="settings" aria-label="設定" aria-hidden="true">
+      <div class="sheet-head">
+        <span>設定</span>
+        <button type="button" class="icon-btn" data-close="settings" aria-label="閉じる"><svg><use href="#i-close"/></svg></button>
       </div>
-      <div class="lab-row">
-        <label for="lab-cols">グリッド列数 <span id="lab-cols-val">6</span></label>
-        <input type="range" id="lab-cols" min="3" max="12" step="1" value="6">
-      </div>
-      <div class="lab-row">
-        <label for="lab-sidebar-w">左ペイン幅 <span id="lab-sidebar-w-val">280px</span></label>
-        <input type="range" id="lab-sidebar-w" min="220" max="400" step="10" value="280">
-      </div>
-      <div class="lab-row">
-        <label for="lab-detail-w">詳細ペイン幅 (A) <span id="lab-detail-w-val">420px</span></label>
-        <input type="range" id="lab-detail-w" min="320" max="560" step="10" value="420">
-      </div>
-      <div class="lab-row">
-        <label for="lab-table-thumb">リストサムネ <span id="lab-table-thumb-val">28px</span></label>
-        <input type="range" id="lab-table-thumb" min="20" max="48" step="2" value="28">
-      </div>
-      <div class="lab-checks">
-        <label><input type="checkbox" id="lab-api"> 実 API 接続</label>
-      </div>
-      <section class="lab-index" id="lab-index" aria-label="索引ステータス">
-        <div class="lab-index-head">
-          <strong>索引 / タグスタック</strong>
-          <button type="button" class="btn-ghost btn-tiny" id="lab-index-refresh">更新</button>
+
+      <section class="set-section">
+        <h2 class="info-label">テーマ</h2>
+        <div class="seg seg-text" id="theme-seg" role="radiogroup" aria-label="テーマ">
+          <button type="button" role="radio" data-theme-choice="auto">自動</button>
+          <button type="button" role="radio" data-theme-choice="dark">ダーク</button>
+          <button type="button" role="radio" data-theme-choice="light">ライト</button>
         </div>
-        <div class="lab-index-body" id="lab-index-body">API に接続して「更新」</div>
       </section>
-      <p class="lab-hint">
-        <strong>案 A</strong>: リストと詳細を常時表示<br>
-        <strong>案 B</strong>: 探索=リスト中心 · 画像クリック=閲覧 · Esc=探索へ（スクロール復元）<br>
-        [ ] = 作品ページ（リストとは独立）
-      </p>
-    </div>
-  </aside>
+
+      <section class="set-section">
+        <h2 class="info-label">データ</h2>
+        <label class="switch-row">
+          <input type="checkbox" id="set-api" role="switch">
+          <span class="switch" aria-hidden="true"></span>
+          <span>API に接続する</span>
+        </label>
+        <p class="set-note" id="api-status">未接続のときはサンプルデータを表示します。</p>
+      </section>
+
+      <section class="set-section">
+        <div class="fp-title-row">
+          <h2 class="info-label">索引の状況</h2>
+          <button type="button" class="link-btn" id="lab-index-refresh">更新</button>
+        </div>
+        <dl class="meta-grid" id="lab-index-body"></dl>
+      </section>
+
+      <section class="set-section">
+        <h2 class="info-label">キー操作</h2>
+        <dl class="keys">
+          <dt><kbd>/</kbd></dt><dd>検索欄へ</dd>
+          <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>前後の画像（閲覧中）</dd>
+          <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>作品の前後ページ</dd>
+          <dt><kbd>Esc</kbd></dt><dd>一覧へ戻る・閉じる</dd>
+          <dt>ホイール</dt><dd>画像の上で前後の画像</dd>
+          <dt>Shift+クリック</dt><dd>タグを除外して絞り込む</dd>
+        </dl>
+      </section>
+    </aside>
+  </div>
 
   <script type="module" src="mockup.js"></script>
 </body>

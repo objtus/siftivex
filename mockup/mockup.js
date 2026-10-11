@@ -1,20 +1,49 @@
-import { IMAGES, TAGS, getMockWorkPages, mockWorkContext } from "./data.js";
+import { IMAGES, ROUTES, TAGS, getMockWorkPages, mockWorkContext } from "./data.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
+const PREFS_KEY = "siftivex.mockup.prefs";
+const GRID_LAYOUTS = ["justified", "masonry", "square", "table"];
+
+function loadPrefs() {
+  try {
+    return JSON.parse(localStorage.getItem(PREFS_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+const prefs = {
+  theme: "auto",
+  gridLayout: "justified",
+  thumbSize: 170,
+  sort: "file_name",
+  /** null = auto-detect on load */
+  useApi: null,
+  ...loadPrefs(),
+};
+
+function savePrefs() {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 const state = {
-  layoutPreset: "b",
+  /** False until init() has decided between API and mock data. */
+  ready: false,
   appMode: "explore",
   query: "",
   route: "all",
-  viewMode: "grid",
-  sort: "file_name",
+  gridLayout: GRID_LAYOUTS.includes(prefs.gridLayout) ? prefs.gridLayout : "justified",
+  thumbSize: Number(prefs.thumbSize) || 170,
+  sort: prefs.sort || "file_name",
   tagStates: Object.fromEntries(TAGS.map((t) => [t, 0])),
-  selected: new Set(),
   activeId: null,
   detailIndex: -1,
-  similarTab: "color",
   useApi: false,
   apiImages: null,
   workContext: null,
@@ -201,22 +230,37 @@ function attachImgRetry(img, src, onGiveUp) {
 }
 
 function listScrollEl() {
-  return state.viewMode === "grid" ? els.grid : els.tableWrap;
+  return els.listScroll;
 }
 
-function tagStateLabel(s) {
-  return s === 1 ? "+" : s === 2 ? "−" : "·";
+function svgIcon(id) {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS(ns, "use");
+  use.setAttribute("href", `#${id}`);
+  svg.appendChild(use);
+  return svg;
 }
 
-function tagStateClass(s) {
-  return s === 1 ? "include" : s === 2 ? "exclude" : "neutral";
-}
-
-function cycleTag(tag) {
-  state.tagStates[tag] = (state.tagStates[tag] + 1) % 3;
+/** s: 0 = none, 1 = include, 2 = exclude */
+function setTagFilter(tag, s) {
+  clearTimeout(debounceTimer);
+  if (s === 0) {
+    if (TAGS.includes(tag) && !state.useApi) state.tagStates[tag] = 0;
+    else delete state.tagStates[tag];
+  } else {
+    state.tagStates[tag] = s;
+  }
   syncQueryFromTags();
   commitQueryToOrigin();
-  render();
+  if (state.appMode === "view") exitViewMode();
+  void refreshList();
+}
+
+function toggleTagFilter(tag, exclude) {
+  const want = exclude ? 2 : 1;
+  setTagFilter(tag, state.tagStates[tag] === want ? 0 : want);
 }
 
 function tagNeedsQuotes(tag) {
@@ -253,17 +297,22 @@ function syncQueryFromTags() {
   if (els.queryInput) els.queryInput.value = state.query;
 }
 
-function removeTagFilter(tag) {
+function clearTagFilters() {
   clearTimeout(debounceTimer);
-  if (TAGS.includes(tag)) state.tagStates[tag] = 0;
-  else delete state.tagStates[tag];
+  for (const tag of Object.keys(state.tagStates)) {
+    if (TAGS.includes(tag) && !state.useApi) state.tagStates[tag] = 0;
+    else delete state.tagStates[tag];
+  }
   syncQueryFromTags();
   commitQueryToOrigin();
   void refreshList();
 }
 
+/** New result set: reload from the API (if connected) and start at the top. */
 async function refreshList() {
   if (state.useApi) await tryLoadApi();
+  facetShowAll = false;
+  els.listScroll.scrollTop = 0;
   render();
 }
 
@@ -284,24 +333,10 @@ function parseQueryTags(q) {
 }
 
 function applyQueryInput() {
+  if (els.queryInput.value === state.query) return;
   state.query = els.queryInput.value;
   parseQueryTags(state.query);
-  commitQueryToOrigin();
   debouncedRender();
-}
-
-function filterByTagFromDetail(tag) {
-  clearTimeout(debounceTimer);
-  if (state.tagStates[tag] === 1) {
-    if (TAGS.includes(tag)) state.tagStates[tag] = 0;
-    else delete state.tagStates[tag];
-  } else {
-    state.tagStates[tag] = 1;
-  }
-  syncQueryFromTags();
-  commitQueryToOrigin();
-  if (state.layoutPreset === "b" && state.appMode === "view") exitViewMode();
-  void refreshList();
 }
 
 function syncRetagButton() {
@@ -392,85 +427,73 @@ function renderDetailTags(item) {
   els.detailTags.innerHTML = "";
   const sources = item?.tag_sources;
   if (sources && state.useApi) {
-    const legend = document.createElement("p");
-    legend.className = "detail-tag-legend";
-    legend.textContent =
-      "レイヤー別: d1＝構造化（種類/画角…）、Tagger＝Danbooru EN 平坦タグ。一覧の tags はこれらをマージした effective。";
-    els.detailTags.appendChild(legend);
-    appendTagSourceBlock(els.detailTags, "d1 — 構造化 (NS)", sources.auto_d1, {
-      chipClass: "chip-ns",
-      open: true,
-    });
-    appendTagSourceBlock(els.detailTags, "ファイル名 / pixiv (JA)", sources.filename, {
-      chipClass: "chip-ja",
-      open: true,
-    });
-    appendTagSourceBlock(els.detailTags, "Tagger — 平坦 (EN)", sources.auto_tagger, {
-      chipClass: "chip-en",
-      open: false,
-    });
-    appendTagSourceBlock(els.detailTags, "推定 JA", sources.inferred_ja, { chipClass: "chip-ja", open: false });
-    appendTagSourceBlock(els.detailTags, "VLM (legacy)", sources.auto, { chipClass: "chip-legacy", open: false });
-    appendTagSourceBlock(els.detailTags, "手動", sources.manual_added, { chipClass: "chip-manual", open: false });
+    const layers = [
+      ["構造化", "d1 が判定した種類・画角・アングルなど", sources.auto_d1, "src-d1", true],
+      ["ファイル名・pixiv", "ファイル名や pixiv のタグ", sources.filename, "src-ja", true],
+      ["Tagger", "画像認識モデルによる英語タグ", sources.auto_tagger, "src-en", false],
+      ["推定（日本語）", "", sources.inferred_ja, "src-ja", false],
+      ["VLM（旧）", "", sources.auto, "src-en", false],
+      ["手動", "", sources.manual_added, "src-en", false],
+    ];
+    for (const [label, hint, tags, cls, open] of layers) {
+      appendTagSourceBlock(els.detailTags, label, tags, { cls, open, hint });
+    }
+    if (!els.detailTags.childElementCount) {
+      els.detailTags.innerHTML = '<p class="detail-tag-legend">タグはまだありません</p>';
+    }
     return;
   }
-  appendTagChips(els.detailTags, item?.tags || []);
+  const row = document.createElement("div");
+  row.className = "tag-editor";
+  appendTagChips(row, item?.tags || []);
+  els.detailTags.appendChild(row);
 }
 
-function appendTagSourceBlock(container, label, tags, opts = {}) {
+function appendTagSourceBlock(container, label, tags, { cls = "", open = false, hint = "" } = {}) {
   const list = tags || [];
   if (!list.length) return;
   const block = document.createElement("details");
-  block.className = "tag-source-block";
-  block.open = opts.open === true;
+  block.className = `tag-source-block ${cls}`.trim();
+  block.open = open;
   const head = document.createElement("summary");
-  head.className = "tag-source-label";
-  head.textContent = `${label} (${list.length})`;
+  if (hint) head.title = hint;
+  const dot = document.createElement("span");
+  dot.className = "src-dot";
+  const name = document.createElement("span");
+  name.textContent = label;
+  const count = document.createElement("span");
+  count.className = "src-count";
+  count.textContent = String(list.length);
+  head.append(dot, name, count);
   block.appendChild(head);
   const row = document.createElement("div");
-  row.className = "tag-editor tag-editor-sub";
-  appendTagChips(row, list, opts.chipClass);
+  row.className = "tag-editor";
+  appendTagChips(row, list);
   block.appendChild(row);
   container.appendChild(block);
 }
 
-function appendTagChips(container, tags, extraClass = "") {
+function appendTagChips(container, tags) {
   for (const t of tags || []) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = `chip neutral tag-filter ${extraClass}`.trim();
+    btn.className = "tag-chip";
     if (state.tagStates[t] === 1) btn.classList.add("include");
     if (state.tagStates[t] === 2) btn.classList.add("exclude");
     btn.textContent = t;
-    btn.title = state.tagStates[t] === 1 ? "絞り込みを解除" : "このタグで絞り込む";
-    btn.addEventListener("click", () => filterByTagFromDetail(t));
+    btn.title = "クリックで絞り込み / Shift+クリックで除外";
+    btn.addEventListener("click", (e) => toggleTagFilter(t, e.shiftKey));
     container.appendChild(btn);
   }
 }
 
-function ocrExcerpt(item) {
-  const t = (item.ocr_text || "").replace(/\s+/g, " ").trim();
-  if (!t) return "—";
-  return t.length > 40 ? `${t.slice(0, 40)}…` : t;
-}
-
-function listTagsPreview(item, max = 4) {
+function listTagsPreview(item, max = 8) {
   const tags = item?.tags || [];
   if (!tags.length) return "—";
   const { ns, flat } = partitionEffectiveTags(tags);
-  const parts = [];
-  if (ns.length) {
-    const head = ns.slice(0, Math.min(3, max));
-    const nsRest = ns.length - head.length;
-    parts.push(`NS: ${head.join(" · ")}${nsRest > 0 ? ` +${nsRest}` : ""}`);
-  }
-  if (flat.length) {
-    const flatMax = ns.length ? Math.max(2, max - 1) : max;
-    const head = flat.slice(0, flatMax);
-    const flatRest = flat.length - head.length;
-    parts.push(`${head.join(", ")}${flatRest > 0 ? ` +${flatRest}` : ""}`);
-  }
-  return parts.join(" │ ") || "—";
+  const ordered = [...ns.map((t) => t.split("/").pop()), ...flat];
+  const head = ordered.slice(0, max).join(", ");
+  return ordered.length > max ? `${head} ほか ${ordered.length - max}` : head;
 }
 
 function filteredImages() {
@@ -546,6 +569,7 @@ function commitQueryToOrigin() {
 
 function renderBreadcrumb() {
   els.breadcrumb.innerHTML = "";
+  els.breadcrumb.hidden = state.originStack.length < 2;
   state.originStack.forEach((entry, idx) => {
     if (idx > 0) {
       const sep = document.createElement("span");
@@ -571,9 +595,6 @@ function jumpToOrigin(idx) {
   state.route = entry.route;
   els.queryInput.value = state.query;
   parseQueryTags(state.query);
-  $$(".route-tabs button").forEach((b) => {
-    b.classList.toggle("active", b.dataset.route === state.route);
-  });
   void (async () => {
     if (state.useApi) await tryLoadApi();
     render();
@@ -583,40 +604,10 @@ function jumpToOrigin(idx) {
   })();
 }
 
-function pushSimilarReflux(imageId) {
-  const scrollTop = listScrollEl()?.scrollTop ?? 0;
-  state.originStack = state.originStack.slice(0, state.originIndex + 1);
-  state.originStack.push({
-    label: originLabel(state.query),
-    query: state.query,
-    route: state.route,
-    scrollTop,
-  });
-  state.query = `similar_to:${imageId}`;
-  state.originIndex = state.originStack.length;
-  state.originStack.push({
-    label: originLabel(state.query),
-    query: state.query,
-    route: state.route,
-    scrollTop: 0,
-  });
-  if (state.originStack.length > 6) {
-    state.originStack = state.originStack.slice(-5);
-    state.originIndex = state.originStack.length - 1;
-  }
-  els.queryInput.value = state.query;
-  render();
-}
-
 function appendThumbPlaceholder(el, item, mode) {
   const ph = document.createElement("div");
-  if (mode === "table") {
-    ph.className = "table-thumb-ph";
-    ph.style.background = item.thumbStyle?.background || "#2a3140";
-  } else {
-    ph.className = "thumb-placeholder";
-    if (item.thumbStyle?.background) ph.style.background = item.thumbStyle.background;
-  }
+  ph.className = mode === "table" ? "table-thumb-ph" : "thumb-placeholder";
+  if (item.thumbStyle?.background) ph.style.background = item.thumbStyle.background;
   ph.title = item.has_thumbnail === false ? "サムネ未生成" : "読み込み失敗";
   el.appendChild(ph);
 }
@@ -638,123 +629,324 @@ function renderThumb(el, item, mode = "grid") {
   appendThumbPlaceholder(el, item, mode);
 }
 
-function renderGrid(list) {
-  resetThumbObserver(els.grid);
-  els.grid.innerHTML = "";
-  for (const item of list) {
-    const card = document.createElement("article");
-    card.className = "image-card";
-    if (state.selected.has(item.image_id)) card.classList.add("selected");
-    if (item.image_id === state.activeId) card.classList.add("active");
-    card.dataset.id = item.image_id;
-    const check = document.createElement("span");
-    check.className = "check";
-    check.textContent = "✓";
-    card.appendChild(check);
-    const thumbWrap = document.createElement("div");
-    thumbWrap.className = "thumb-wrap";
-    renderThumb(thumbWrap, item);
-    card.appendChild(thumbWrap);
-    if (item.score != null) {
-      const sc = document.createElement("span");
-      sc.className = "score";
-      sc.textContent = item.score.toFixed(3);
-      card.appendChild(sc);
+function itemAspect(item) {
+  const w = Number(item.width);
+  const h = Number(item.height);
+  const a = w > 0 && h > 0 ? w / h : 0.75;
+  return Math.min(3, Math.max(0.33, a));
+}
+
+function createCard(item) {
+  const card = document.createElement("button");
+  card.type = "button";
+  card.className = "image-card";
+  card.dataset.id = item.image_id;
+  card.setAttribute("aria-label", item.file_name);
+  if (item.image_id === state.activeId) card.classList.add("active");
+  renderThumb(card, item);
+  card.addEventListener("click", () => openDetail(item.image_id, filteredImages()));
+  return card;
+}
+
+let lastGridWidth = 0;
+
+function gridContentWidth() {
+  return els.grid.clientWidth || els.listScroll.clientWidth - 8;
+}
+
+function layoutJustified(list, width) {
+  const gap = parseFloat(getComputedStyle(els.grid).columnGap) || 4;
+  const target = state.thumbSize;
+  let row = [];
+  let aspectSum = 0;
+  const flush = (isLast) => {
+    const rowEl = document.createElement("div");
+    rowEl.className = "jrow";
+    const fullHeight = (width - gap * (row.length - 1)) / aspectSum;
+    const h = isLast ? Math.min(target, fullHeight) : fullHeight;
+    for (const item of row) {
+      const card = createCard(item);
+      const a = itemAspect(item);
+      card.style.height = `${h}px`;
+      card.style.flex = isLast ? `0 0 ${a * h}px` : `${a} 1 0`;
+      rowEl.appendChild(card);
     }
-    card.addEventListener("click", (e) => onCardClick(item, e));
-    els.grid.appendChild(card);
+    els.grid.appendChild(rowEl);
+    row = [];
+    aspectSum = 0;
+  };
+  for (const item of list) {
+    row.push(item);
+    aspectSum += itemAspect(item);
+    if (aspectSum * target + gap * (row.length - 1) >= width) flush(false);
+  }
+  if (row.length) flush(true);
+}
+
+function layoutMasonry(list, width) {
+  const gap = parseFloat(getComputedStyle(els.grid).columnGap) || 4;
+  const cols = Math.max(1, Math.floor((width + gap) / (state.thumbSize + gap)));
+  const colWidth = (width - gap * (cols - 1)) / cols;
+  const colEls = [];
+  const heights = new Array(cols).fill(0);
+  for (let i = 0; i < cols; i += 1) {
+    const col = document.createElement("div");
+    col.className = "mcol";
+    els.grid.appendChild(col);
+    colEls.push(col);
+  }
+  for (const item of list) {
+    const c = heights.indexOf(Math.min(...heights));
+    const a = itemAspect(item);
+    const card = createCard(item);
+    card.style.aspectRatio = String(a);
+    colEls[c].appendChild(card);
+    heights[c] += colWidth / a + gap;
   }
 }
 
+function renderGrid(list) {
+  resetThumbObserver(els.listScroll);
+  els.grid.innerHTML = "";
+  els.grid.className = `image-grid layout-${state.gridLayout}`;
+  const width = gridContentWidth();
+  lastGridWidth = width;
+  if (state.gridLayout === "justified" && width > 0) layoutJustified(list, width);
+  else if (state.gridLayout === "masonry" && width > 0) layoutMasonry(list, width);
+  else for (const item of list) els.grid.appendChild(createCard(item));
+}
+
+function tableCell(className, text, title) {
+  const td = document.createElement("td");
+  td.className = className;
+  td.textContent = text;
+  if (title) td.title = title;
+  return td;
+}
+
 function renderTable(list) {
-  resetThumbObserver(els.tableWrap);
+  resetThumbObserver(els.listScroll);
   els.tableBody.innerHTML = "";
   for (const item of list) {
     const tr = document.createElement("tr");
+    tr.dataset.id = item.image_id;
     if (item.image_id === state.activeId) tr.classList.add("active");
-    tr.innerHTML = `
-      <td class="col-thumb"><div class="table-thumb-cell"></div></td>
-      <td class="col-filename">${item.file_name}</td>
-      <td class="col-tags" title="${(item.tags || []).join(", ")}">${listTagsPreview(item)}</td>
-      <td class="col-ocr">${ocrExcerpt(item)}</td>
-      <td class="col-score">${item.score?.toFixed(3) ?? "—"}</td>
-    `;
-    renderThumb(tr.querySelector(".table-thumb-cell"), item, "table");
-    tr.addEventListener("click", () => openDetail(item.image_id, list));
+    const thumbTd = document.createElement("td");
+    thumbTd.className = "col-thumb";
+    const cell = document.createElement("div");
+    thumbTd.appendChild(cell);
+    renderThumb(cell, item, "table");
+    tr.append(
+      thumbTd,
+      tableCell("col-filename", item.file_name, item.file_name),
+      tableCell("col-route", routeLabel(item.route_tag)),
+      tableCell("col-dims", item.width && item.height ? `${item.width}×${item.height}` : "—"),
+      tableCell("col-tags", listTagsPreview(item), (item.tags || []).join(", ")),
+      tableCell("col-score", item.score != null ? item.score.toFixed(3) : "—"),
+    );
+    tr.addEventListener("click", () => openDetail(item.image_id, filteredImages()));
     els.tableBody.appendChild(tr);
   }
 }
 
-function renderTagList() {
-  const filter = els.tagFilter.value.toLowerCase();
-  els.tagList.innerHTML = "";
-  if (state.useApi) {
-    const hint = document.createElement("p");
-    hint.className = "api-tag-hint";
-    hint.textContent =
-      "API モード: tag:名前（空白・括弧ありは tag:\"black hair\"）。詳細チップは自動で引用。";
-    els.tagList.appendChild(hint);
-    return;
+function routeOptions() {
+  const by = state.indexStatus?.tag_stack_by_route ?? {};
+  const total = state.useApi ? state.indexStatus?.images_active : IMAGES.length;
+  return [
+    { id: "all", label: "すべて", count: total },
+    ...ROUTES.map((r) => ({
+      id: r.id,
+      label: r.label,
+      count: state.useApi ? by[r.id]?.active : IMAGES.filter((i) => i.route_tag === r.id).length,
+    })),
+  ];
+}
+
+function renderRoutes() {
+  els.routeList.innerHTML = "";
+  for (const r of routeOptions()) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "route-item";
+    btn.setAttribute("role", "radio");
+    btn.setAttribute("aria-checked", String(state.route === r.id));
+    const name = document.createElement("span");
+    name.className = "route-name";
+    name.textContent = r.label;
+    const count = document.createElement("span");
+    count.className = "route-count";
+    count.textContent = r.count != null ? r.count.toLocaleString() : "";
+    btn.append(name, count);
+    btn.addEventListener("click", () => {
+      if (state.route === r.id) return;
+      state.route = r.id;
+      commitQueryToOrigin();
+      closeOverlays();
+      void refreshList();
+    });
+    els.routeList.appendChild(btn);
   }
-  for (const tag of TAGS) {
-    if (filter && !tag.toLowerCase().includes(filter)) continue;
-    const s = state.tagStates[tag];
-    const row = document.createElement("div");
-    row.className = "tag-item";
-    const count = IMAGES.filter((i) => i.tags.includes(tag)).length;
-    row.innerHTML = `
-      <button type="button" class="tag-cycle ${tagStateClass(s)}" title="未選択→含む→除外">${tagStateLabel(s)}</button>
-      <span>${tag}</span>
-      <span class="tag-count">${count}</span>
-    `;
-    row.querySelector(".tag-cycle").addEventListener("click", () => cycleTag(tag));
-    els.tagList.appendChild(row);
+}
+
+const FACET_TOP = 40;
+let facetShowAll = false;
+
+function computeFacets(list) {
+  const counts = new Map();
+  for (const item of list) {
+    for (const t of item.tags || []) counts.set(t, (counts.get(t) ?? 0) + 1);
+  }
+  for (const [tag, s] of Object.entries(state.tagStates)) {
+    if (s !== 0 && !counts.has(tag)) counts.set(tag, 0);
+  }
+  const groups = new Map();
+  const flat = [];
+  for (const [tag, count] of counts) {
+    const m = tag.match(NAMESPACE_TAG_RE);
+    if (m) {
+      if (!groups.has(m[1])) groups.set(m[1], []);
+      groups.get(m[1]).push({ tag, label: tag.slice(m[0].length), count });
+    } else {
+      flat.push({ tag, label: tag, count });
+    }
+  }
+  const byCount = (a, b) => b.count - a.count || a.label.localeCompare(b.label);
+  for (const rows of groups.values()) rows.sort(byCount);
+  flat.sort(byCount);
+  return { groups, flat };
+}
+
+function facetRow(row, max) {
+  const s = state.tagStates[row.tag] ?? 0;
+  const el = document.createElement("div");
+  el.className = `facet-row${s === 1 ? " include" : s === 2 ? " exclude" : ""}`;
+  el.style.setProperty("--p", `${max ? Math.round((row.count / max) * 100) : 0}%`);
+  const name = document.createElement("button");
+  name.type = "button";
+  name.className = "facet-name";
+  name.textContent = row.label;
+  name.title = `${row.tag}（クリックで絞り込み / Shift+クリックで除外）`;
+  el.addEventListener("click", (e) => {
+    if (e.target.closest(".facet-x")) return;
+    toggleTagFilter(row.tag, e.shiftKey);
+  });
+  const count = document.createElement("span");
+  count.className = "facet-count";
+  count.textContent = String(row.count);
+  const x = document.createElement("button");
+  x.type = "button";
+  x.className = "facet-x";
+  x.setAttribute("aria-label", `${row.tag} を除外`);
+  x.title = "除外";
+  x.textContent = "−";
+  x.addEventListener("click", () => toggleTagFilter(row.tag, true));
+  el.append(name, count, x);
+  return el;
+}
+
+function renderFacets(list = filteredImages()) {
+  const filter = els.tagFilter.value.trim().toLowerCase();
+  const { groups, flat } = computeFacets(list);
+  const max = list.length;
+  els.facetBasis.textContent = list.length ? `${list.length.toLocaleString()} 件から集計` : "";
+  els.tagList.innerHTML = "";
+  const match = (r) => !filter || r.tag.toLowerCase().includes(filter);
+
+  for (const [ns, rows] of groups) {
+    const shown = rows.filter(match);
+    if (!shown.length) continue;
+    const g = document.createElement("div");
+    g.className = "facet-group";
+    const title = document.createElement("h3");
+    title.className = "facet-group-title";
+    title.textContent = ns;
+    g.appendChild(title);
+    for (const r of shown) g.appendChild(facetRow(r, max));
+    els.tagList.appendChild(g);
+  }
+
+  const flatShown = flat.filter(match);
+  if (flatShown.length) {
+    const g = document.createElement("div");
+    g.className = "facet-group";
+    if (groups.size) {
+      const title = document.createElement("h3");
+      title.className = "facet-group-title";
+      title.textContent = "タグ";
+      g.appendChild(title);
+    }
+    const limit = filter || facetShowAll ? flatShown.length : FACET_TOP;
+    for (const r of flatShown.slice(0, limit)) g.appendChild(facetRow(r, max));
+    if (flatShown.length > limit) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "link-btn facet-more";
+      more.textContent = `残り ${flatShown.length - limit} 件を表示`;
+      more.addEventListener("click", () => {
+        facetShowAll = true;
+        renderFacets();
+      });
+      g.appendChild(more);
+    }
+    els.tagList.appendChild(g);
+  }
+
+  if (!els.tagList.childElementCount) {
+    const p = document.createElement("p");
+    p.className = "facet-empty";
+    p.textContent = filter ? "一致するタグはありません" : "表示中の結果にタグがありません";
+    els.tagList.appendChild(p);
   }
 }
 
 function renderChips() {
   els.chipRow.innerHTML = "";
+  let n = 0;
   for (const [tag, s] of Object.entries(state.tagStates)) {
     if (s === 0) continue;
+    n += 1;
     const chip = document.createElement("span");
-    chip.className = `chip ${s === 1 ? "include" : "exclude"}`;
-    chip.append(document.createTextNode(s === 2 ? `−${tag} ` : `${tag} `));
+    chip.className = `filter-chip${s === 2 ? " exclude" : ""}`;
+    chip.title = s === 2 ? `${tag} を除外中` : `${tag} を含む`;
+    const text = document.createElement("span");
+    text.className = "chip-text";
+    text.textContent = tag;
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "x";
-    btn.textContent = "×";
-    btn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      removeTagFilter(tag);
-    });
-    chip.append(btn);
+    btn.setAttribute("aria-label", `${tag} の絞り込みを解除`);
+    btn.appendChild(svgIcon("i-close"));
+    btn.addEventListener("click", () => setTagFilter(tag, 0));
+    chip.append(text, btn);
     els.chipRow.appendChild(chip);
   }
-  const showNote =
-    /similar_to:/.test(state.query) ||
-    (state.useApi && Object.values(state.tagStates).some((s) => s !== 0));
-  els.queryNote.classList.toggle("visible", showNote);
-  if (state.useApi) {
-    els.queryNote.textContent = state.apiLoadError
-      ? `⚠ API: ${state.apiLoadError}`
-      : "API: フィルタはサーバ検索。チップはクエリと同期（Enter で再検索）。";
-  }
+  els.activeFilters.dataset.empty = String(n === 0);
+  els.queryError.hidden = !state.apiLoadError;
+  els.queryError.textContent = state.apiLoadError
+    ? `検索に失敗しました（${state.apiLoadError}）。API サーバーが起動しているか確認してください。`
+    : "";
 }
 
 function enterViewMode() {
-  if (state.layoutPreset !== "b") return;
+  if (state.appMode === "view") return;
   state.savedScrollTop = listScrollEl()?.scrollTop ?? 0;
   state.appMode = "view";
+  history.pushState({ siftivexView: true }, "");
   applyShellClasses();
 }
 
-function exitViewMode() {
-  if (state.layoutPreset !== "b") return;
+function exitViewMode({ fromHistory = false } = {}) {
+  if (state.appMode !== "view") return;
   state.appMode = "explore";
   applyShellClasses();
+  if (!fromHistory && history.state?.siftivexView) history.back();
   requestAnimationFrame(() => {
     listScrollEl().scrollTop = state.savedScrollTop;
+    const active = state.activeId
+      ? els.listScroll.querySelector(`[data-id="${CSS.escape(state.activeId)}"]`)
+      : null;
+    active?.scrollIntoView({ block: "nearest" });
+    if (active?.matches("button")) active.focus({ preventScroll: true });
   });
 }
 
@@ -762,7 +954,7 @@ function openDetail(id, list) {
   state.activeId = id;
   const fresh = list ?? filteredImages();
   state.detailIndex = fresh.findIndex((i) => i.image_id === id);
-  if (state.layoutPreset === "b") enterViewMode();
+  enterViewMode();
   renderDetail(fresh);
   renderListOnly(fresh);
 }
@@ -860,6 +1052,7 @@ function renderSubline(item, displayMeta) {
       a.target = "_blank";
       a.rel = "noopener";
       a.textContent = entry.text;
+      a.appendChild(svgIcon("i-external"));
       els.detailSubline.appendChild(a);
     } else {
       const span = document.createElement("span");
@@ -916,12 +1109,25 @@ function fetchApiImageDetailCached(imageId) {
   return p;
 }
 
+function fillDl(dl, rows) {
+  dl.innerHTML = "";
+  for (const [label, value] of rows) {
+    if (value == null || value === "") continue;
+    const dt = document.createElement("dt");
+    dt.textContent = label;
+    const dd = document.createElement("dd");
+    dd.textContent = value;
+    dl.append(dt, dd);
+  }
+}
+
 function renderDetailMeta(item) {
-  els.detailMeta.innerHTML = `
-    <dt>ID</dt><dd>${item.image_id}</dd>
-    <dt>ファイル</dt><dd>${item.file_name}</dd>
-    <dt>ルート</dt><dd>${routeLabel(item.route_tag)}</dd>
-  `;
+  fillDl(els.detailMeta, [
+    ["ファイル", item.file_name],
+    ["ルート", routeLabel(item.route_tag)],
+    ["寸法", item.width && item.height ? `${item.width} × ${item.height}` : null],
+    ["ID", item.image_id],
+  ]);
 }
 
 function renderDetailTagsError() {
@@ -1282,107 +1488,95 @@ function renderDetailBody(list, item) {
 
   els.detailTags.innerHTML = "";
   if (state.useApi && !item.tag_sources) {
-    els.detailTags.innerHTML = '<p class="detail-tag-legend">タグ（source 別）を読み込み中…</p>';
+    els.detailTags.innerHTML = '<p class="detail-tag-legend">タグを読み込み中…</p>';
   } else {
     renderDetailTags(item);
   }
   syncRetagButton();
   renderDetailMeta(item);
-  els.similarStrip.innerHTML = "";
-  const sim = (state.useApi ? list : IMAGES).filter((i) => i.image_id !== item.image_id).slice(0, 8);
-  for (const s of sim) {
-    const m = document.createElement("button");
-    m.type = "button";
-    m.className = "mini";
-    Object.assign(m.style, s.thumbStyle || { background: "#444", width: "56px", height: "56px" });
-    if (s.thumb_url) {
-      m.style.background = `center/cover url(${s.thumb_url})`;
-    }
-    m.title = "詳細へ";
-    m.addEventListener("click", () => openDetail(s.image_id, filteredImages()));
-    els.similarStrip.appendChild(m);
-  }
-  els.btnSimilarReflux.disabled = false;
-  els.btnSimilarReflux.dataset.imageId = item.image_id;
 }
 
-function renderListOnly(list) {
-  $$(".image-card").forEach((c) => c.classList.toggle("active", c.dataset.id === state.activeId));
-  $$(".image-table tbody tr").forEach((tr, i) => {
-    const id = list[i]?.image_id;
-    tr.classList.toggle("active", id === state.activeId);
-  });
-}
-
-function onCardClick(item, e) {
-  const list = filteredImages();
-  if (e.shiftKey) {
-    if (state.selected.has(item.image_id)) state.selected.delete(item.image_id);
-    else state.selected.add(item.image_id);
-    renderBulkBar();
-    renderGrid(list);
-    return;
-  }
-  openDetail(item.image_id, list);
-}
-
-function renderBulkBar() {
-  const n = state.selected.size;
-  els.bulkBar.classList.toggle("visible", n > 0);
-  els.bulkCount.textContent = `${n} 件選択`;
+function renderListOnly() {
+  els.listScroll.querySelectorAll("[data-id].active").forEach((el) => el.classList.remove("active"));
+  if (!state.activeId) return;
+  els.listScroll
+    .querySelectorAll(`[data-id="${CSS.escape(state.activeId)}"]`)
+    .forEach((el) => el.classList.add("active"));
 }
 
 function applyShellClasses() {
-  els.app.classList.remove("layout-a", "layout-b", "mode-explore", "mode-view");
-  els.app.classList.add(state.layoutPreset === "b" ? "layout-b" : "layout-a");
-  els.app.classList.add(state.appMode === "view" ? "mode-view" : "mode-explore");
-  els.layoutBadge.textContent = state.layoutPreset === "b" ? "案 B" : "案 A";
-  els.modeBadge.textContent = state.appMode === "view" ? "閲覧" : "探索";
-  els.navHint.textContent =
-    state.layoutPreset === "b"
-      ? "クリック → 閲覧モード · Esc → 探索へ"
-      : "クリック → 右ペイン · Shift+クリック → 複数選択";
-  els.btnBackExplore.hidden = !(state.layoutPreset === "b" && state.appMode === "view");
+  els.app.classList.toggle("mode-view", state.appMode === "view");
+  els.app.classList.toggle("mode-explore", state.appMode !== "view");
 }
 
-function applyLayoutVars() {
-  document.documentElement.style.setProperty("--sidebar-w", `${$("#lab-sidebar-w").value}px`);
-  document.documentElement.style.setProperty("--detail-w", `${$("#lab-detail-w").value}px`);
-  document.documentElement.style.setProperty("--grid-cols", $("#lab-cols").value);
+function renderCount(list) {
+  els.resultCount.innerHTML = "";
+  const shown = document.createTextNode(`${list.length.toLocaleString()} 件`);
+  els.resultCount.appendChild(shown);
+  if (state.useApi && state.apiTotal != null && state.apiTotal > list.length) {
+    const total = document.createElement("span");
+    total.className = "count-total";
+    total.textContent = ` / ${state.apiTotal.toLocaleString()}`;
+    els.resultCount.appendChild(total);
+  }
+}
+
+function renderListEmpty(list) {
+  const empty = list.length === 0;
+  els.listEmpty.hidden = !empty;
+  if (!empty) return;
+  els.listEmpty.innerHTML = "";
+  const p = document.createElement("p");
+  const hasFilters = Object.values(state.tagStates).some((s) => s !== 0) || queryTextOnly(state.query);
+  p.textContent = state.apiLoadError
+    ? "検索結果を取得できませんでした。"
+    : hasFilters
+      ? "条件に合う画像はありません。"
+      : "画像がありません。";
+  els.listEmpty.appendChild(p);
+  if (hasFilters) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn";
+    btn.textContent = "絞り込みを解除";
+    btn.addEventListener("click", () => {
+      els.queryInput.value = "";
+      state.query = "";
+      clearTagFilters();
+    });
+    els.listEmpty.appendChild(btn);
+  }
+}
+
+function renderList(list) {
+  const scrollTop = els.listScroll.scrollTop;
+  const isTable = state.gridLayout === "table";
+  els.grid.hidden = isTable;
+  els.tableWrap.hidden = !isTable;
+  if (isTable) {
+    els.grid.innerHTML = "";
+    renderTable(list);
+  } else {
+    els.tableBody.innerHTML = "";
+    renderGrid(list);
+  }
+  els.listScroll.scrollTop = scrollTop;
 }
 
 function render() {
+  if (!state.ready) return;
   const list = filteredImages();
-  if (state.useApi && state.apiTotal != null) {
-    const shown = list.length.toLocaleString();
-    const total = state.apiTotal.toLocaleString();
-    els.resultCount.textContent =
-      state.apiTotal > list.length ? `${shown} / ${total} 件` : `${total} 件`;
-  } else {
-    els.resultCount.textContent = `${list.length.toLocaleString()} 件`;
-  }
+  renderCount(list);
   renderBreadcrumb();
+  renderRoutes();
   renderChips();
-  renderTagList();
-  if (state.viewMode === "grid") {
-    els.grid.hidden = false;
-    els.tableWrap.hidden = true;
-    renderGrid(list);
-  } else {
-    els.grid.hidden = true;
-    els.tableWrap.hidden = false;
-    renderTable(list);
-  }
-  if (state.activeId) {
-    syncDetailChrome(list);
-  } else if (state.layoutPreset === "a" && state.appMode === "explore") {
-    els.detailEmpty.hidden = false;
-    els.detailContent.hidden = true;
-  }
-  renderBulkBar();
+  renderFacets(list);
+  renderList(list);
+  renderListEmpty(list);
+  if (state.activeId) syncDetailChrome(list);
   syncLoadMoreButton();
+  syncToolbarControls();
   applyShellClasses();
-  applyLayoutVars();
 }
 
 function mapApiImageItems(items) {
@@ -1448,36 +1642,43 @@ function syncLoadMoreButton() {
   els.btnLoadMore.hidden = !show;
   if (show) {
     const rest = state.apiTotal - state.apiImages.length;
-    els.btnLoadMore.textContent = `さらに読み込み (+${Math.min(rest, state.apiPageLimit)})`;
+    els.btnLoadMore.textContent = state.apiLoadingMore
+      ? "読み込み中…"
+      : `さらに読み込む（残り ${rest.toLocaleString()} 件）`;
   }
 }
 
-function formatRouteStack(label, row) {
-  if (!row) return "";
-  return `${label}: tagger ${row.with_auto_tagger}/${row.active} · d1 ${row.with_auto_d1}/${row.active}`;
+function ratio(done, total) {
+  if (done == null || !total) return null;
+  return `${done.toLocaleString()} / ${total.toLocaleString()}`;
 }
 
 function renderIndexStatusPanel() {
   if (!els.labIndexBody) return;
   if (state.indexStatusError) {
-    els.labIndexBody.textContent = `⚠ ${state.indexStatusError}`;
+    fillDl(els.labIndexBody, [["状態", `取得できません（${state.indexStatusError}）`]]);
     return;
   }
   const d = state.indexStatus;
   if (!d) {
-    els.labIndexBody.textContent = "「更新」で /api/index/status を取得";
+    fillDl(els.labIndexBody, [["状態", "API に接続すると表示します"]]);
     return;
   }
   const ts = d.tag_stack || {};
   const by = d.tag_stack_by_route || {};
-  const lines = [
-    `画像 ${d.images_active?.toLocaleString()} · CLIP ${d.embedded?.toLocaleString()}`,
-    `tagger ${ts.with_auto_tagger?.toLocaleString()}/${ts.images_active?.toLocaleString()} · d1 ${ts.with_auto_d1?.toLocaleString()}/${ts.images_active?.toLocaleString()}`,
-    formatRouteStack("pixiv", by["route/pixiv"]),
-    formatRouteStack("under", by["route/under-iphone"]),
-    `キュー tagger ${ts.jobs_pending?.tagger_tag ?? 0} · VLM ${ts.jobs_pending?.vlm_tag ?? 0}`,
-  ].filter(Boolean);
-  els.labIndexBody.textContent = lines.join("\n");
+  const rows = [
+    ["画像", d.images_active?.toLocaleString()],
+    ["CLIP 埋め込み", ratio(d.embedded, d.images_active)],
+    ["Tagger", ratio(ts.with_auto_tagger, ts.images_active)],
+    ["d1", ratio(ts.with_auto_d1, ts.images_active)],
+  ];
+  for (const r of ROUTES) {
+    const row = by[r.id];
+    if (row) rows.push([`${r.label}（d1）`, ratio(row.with_auto_d1, row.active)]);
+  }
+  const pending = (ts.jobs_pending?.tagger_tag ?? 0) + (ts.jobs_pending?.vlm_tag ?? 0);
+  rows.push(["処理待ち", pending ? `${pending.toLocaleString()} 件` : "なし"]);
+  fillDl(els.labIndexBody, rows);
 }
 
 async function refreshIndexStatus() {
@@ -1491,6 +1692,7 @@ async function refreshIndexStatus() {
     state.indexStatusError = err.message || String(err);
   }
   renderIndexStatusPanel();
+  renderRoutes();
 }
 
 function navDetailBySteps(steps) {
@@ -1525,9 +1727,9 @@ function queueWheelNav(delta) {
 let debounceTimer;
 function debouncedRender() {
   clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(async () => {
-    if (state.useApi) await tryLoadApi();
-    render();
+  debounceTimer = setTimeout(() => {
+    commitQueryToOrigin();
+    void refreshList();
   }, 280);
 }
 
@@ -1536,97 +1738,93 @@ function bindEvents() {
   els.queryInput.addEventListener("search", applyQueryInput);
   els.queryInput.addEventListener("change", applyQueryInput);
   els.queryInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") applyQueryInput();
-  });
-
-  $$(".route-tabs button").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      $$(".route-tabs button").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      state.route = btn.dataset.route;
-      commitQueryToOrigin();
-      debouncedRender();
-    });
-  });
-
-  $$(".view-tabs button").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      $$(".view-tabs button").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      state.viewMode = btn.dataset.view;
-      render();
-    });
+    if (e.key !== "Enter") return;
+    clearTimeout(debounceTimer);
+    state.query = els.queryInput.value;
+    parseQueryTags(state.query);
+    commitQueryToOrigin();
+    void refreshList();
   });
 
   els.sortSelect.addEventListener("change", () => {
     state.sort = els.sortSelect.value;
+    prefs.sort = state.sort;
+    savePrefs();
     render();
+  });
+
+  $$("#layout-seg button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.gridLayout = btn.dataset.layout;
+      prefs.gridLayout = state.gridLayout;
+      savePrefs();
+      renderList(filteredImages());
+      syncToolbarControls();
+    });
+  });
+
+  els.thumbSize.addEventListener("input", () => {
+    state.thumbSize = Number(els.thumbSize.value);
+    document.documentElement.style.setProperty("--thumb", `${state.thumbSize}px`);
+    scheduleRelayout(true);
+  });
+  els.thumbSize.addEventListener("change", () => {
+    prefs.thumbSize = state.thumbSize;
+    savePrefs();
   });
 
   els.detailPrev.addEventListener("click", () => navDetail(-1));
   els.detailNext.addEventListener("click", () => navDetail(1));
-  els.btnRetag?.addEventListener("click", () => void retagActiveImage());
   els.workPrev.addEventListener("click", () => navWork(-1));
   els.workNext.addEventListener("click", () => navWork(1));
-  els.btnBackExplore.addEventListener("click", () => {
-    exitViewMode();
+  els.btnBackExplore.addEventListener("click", () => exitViewMode());
+  $$(".edge-nav").forEach((btn) => {
+    btn.addEventListener("click", () => navDetail(Number(btn.dataset.nav)));
   });
-  els.btnSimilarReflux.addEventListener("click", () => {
-    const id = els.btnSimilarReflux.dataset.imageId;
-    if (id) {
-      if (state.layoutPreset === "b") exitViewMode();
-      pushSimilarReflux(id);
-    }
+  els.btnInfo.addEventListener("click", () => {
+    const hidden = els.app.classList.toggle("info-hidden");
+    els.btnInfo.setAttribute("aria-expanded", String(!hidden));
   });
+  bindSwipe(els.viewerStage);
 
-  $$(".similar-tabs button").forEach((btn) => {
+  els.btnClearFilters.addEventListener("click", () => clearTagFilters());
+
+  els.btnFilters.addEventListener("click", () => openOverlay("filters"));
+  els.btnSettings.addEventListener("click", () => openOverlay("settings"));
+  els.scrim.addEventListener("click", () => closeOverlays());
+  $$("[data-close]").forEach((btn) => btn.addEventListener("click", () => closeOverlays()));
+
+  $$("#theme-seg button").forEach((btn) => {
     btn.addEventListener("click", () => {
-      $$(".similar-tabs button").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      state.similarTab = btn.dataset.tab;
+      prefs.theme = btn.dataset.themeChoice;
+      savePrefs();
+      applyTheme();
     });
   });
+  window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => applyTheme());
 
-  $("#lab-preset").addEventListener("change", (e) => {
-    state.layoutPreset = e.target.value;
-    state.appMode = "explore";
-    render();
-  });
-
-  $("#lab-cols").addEventListener("input", () => {
-    $("#lab-cols-val").textContent = $("#lab-cols").value;
-    applyLayoutVars();
-  });
-  $("#lab-sidebar-w").addEventListener("input", () => {
-    $("#lab-sidebar-w-val").textContent = `${$("#lab-sidebar-w").value}px`;
-    applyLayoutVars();
-  });
-  $("#lab-detail-w").addEventListener("input", () => {
-    $("#lab-detail-w-val").textContent = `${$("#lab-detail-w").value}px`;
-    applyLayoutVars();
-  });
-  $("#lab-table-thumb").addEventListener("input", () => {
-    const size = $("#lab-table-thumb").value;
-    $("#lab-table-thumb-val").textContent = `${size}px`;
-    document.documentElement.style.setProperty("--table-thumb-size", `${size}px`);
-  });
-  $("#lab-api").addEventListener("change", async (e) => {
-    state.useApi = e.target.checked;
-    parseQueryTags(state.query);
-    await tryLoadApi();
-    if (state.useApi) await refreshIndexStatus();
-    render();
+  els.setApi.addEventListener("change", () => {
+    prefs.useApi = els.setApi.checked;
+    savePrefs();
+    void setApiEnabled(els.setApi.checked);
   });
 
-  els.btnLoadMore?.addEventListener("click", async () => {
-    await tryLoadApi({ append: true });
-    render();
+  els.btnLoadMore.addEventListener("click", () => void loadMore());
+  new IntersectionObserver(
+    (entries) => {
+      if (entries.some((e) => e.isIntersecting)) void loadMore();
+    },
+    { root: els.listScroll, rootMargin: "1200px 0px" },
+  ).observe(els.loadSentinel);
+
+  els.labIndexRefresh.addEventListener("click", () => refreshIndexStatus());
+
+  els.tagFilter.addEventListener("input", () => renderFacets());
+
+  new ResizeObserver(() => scheduleRelayout(false)).observe(els.listScroll);
+  window.addEventListener("popstate", () => {
+    if (state.appMode === "view") exitViewMode({ fromHistory: true });
   });
-
-  els.labIndexRefresh?.addEventListener("click", () => refreshIndexStatus());
-
-  els.tagFilter.addEventListener("input", () => renderTagList());
-  els.labToggle.addEventListener("click", () => els.lab.classList.toggle("collapsed"));
 
   els.detailImage.addEventListener(
     "wheel",
@@ -1651,18 +1849,14 @@ function bindEvents() {
       els.queryInput.focus();
     }
     if (e.key === "Escape") {
-      if (state.layoutPreset === "b" && state.appMode === "view") {
-        exitViewMode();
+      if (openOverlayName) {
+        closeOverlays();
         return;
       }
-      if (state.activeId && state.layoutPreset === "a") {
-        state.activeId = null;
-        state.detailIndex = -1;
-        render();
-      }
+      if (state.appMode === "view") exitViewMode();
       return;
     }
-    if (state.activeId == null) return;
+    if (state.appMode !== "view" || state.activeId == null) return;
     if (e.key === "[" || (e.key === "ArrowLeft" && e.shiftKey)) {
       e.preventDefault();
       navWork(-1);
@@ -1684,54 +1878,229 @@ function bindEvents() {
   });
 }
 
-function init() {
-  els.app = $("#app");
-  els.grid = $("#image-grid");
-  els.tableWrap = $("#table-wrap");
-  els.tableBody = $("#table-body");
-  els.queryInput = $("#query-input");
-  els.chipRow = $("#chip-row");
-  els.queryNote = $("#query-note");
-  els.breadcrumb = $("#breadcrumb");
-  els.tagList = $("#tag-list");
-  els.tagFilter = $("#tag-filter");
-  els.resultCount = $("#result-count");
-  els.sortSelect = $("#sort-select");
-  els.navHint = $("#nav-hint");
-  els.detail = $("#detail-pane");
-  els.detailEmpty = $("#detail-empty");
-  els.detailContent = $("#detail-content");
-  els.detailImage = $("#detail-image");
-  els.detailPos = $("#detail-pos");
-  els.detailPrev = $("#detail-prev");
-  els.detailNext = $("#detail-next");
-  els.detailTitle = $("#detail-title");
-  els.detailSubline = $("#detail-subline");
-  els.detailContext = $("#detail-context");
-  els.detailPageSlot = $("#detail-page-slot");
-  els.workPos = $("#work-pos");
-  els.workPrev = $("#work-prev");
-  els.workNext = $("#work-next");
-  els.pageStrip = $("#page-strip");
-  els.detailTags = $("#detail-tags");
-  els.detailMeta = $("#detail-meta");
-  els.btnRetag = $("#btn-retag");
-  els.similarStrip = $("#similar-strip");
-  els.btnSimilarReflux = $("#btn-similar-reflux");
-  els.bulkBar = $("#bulk-bar");
-  els.bulkCount = $("#bulk-count");
-  els.modeBadge = $("#mode-badge");
-  els.layoutBadge = $("#layout-badge");
-  els.btnBackExplore = $("#btn-back-explore");
-  els.lab = $("#mockup-lab");
-  els.labToggle = $("#lab-toggle");
-  els.btnLoadMore = $("#btn-load-more");
-  els.labIndexBody = $("#lab-index-body");
-  els.labIndexRefresh = $("#lab-index-refresh");
+/* ── Overlays (filter drawer on compact screens, settings) ── */
 
-  bindEvents();
-  void refreshIndexStatus();
+let openOverlayName = null;
+let overlayReturnFocus = null;
+
+function openOverlay(name) {
+  closeOverlays({ restoreFocus: false });
+  openOverlayName = name;
+  overlayReturnFocus = document.activeElement;
+  els.scrim.hidden = false;
+  if (name === "settings") {
+    els.settings.classList.add("open");
+    els.settings.setAttribute("aria-hidden", "false");
+    els.btnSettings.setAttribute("aria-expanded", "true");
+    if (state.useApi) void refreshIndexStatus();
+    els.settings.querySelector("button, input")?.focus();
+  } else {
+    els.app.classList.add("filters-open");
+    els.btnFilters.setAttribute("aria-expanded", "true");
+    els.filterPane.querySelector("button, input")?.focus();
+  }
+}
+
+function closeOverlays({ restoreFocus = true } = {}) {
+  if (!openOverlayName) return;
+  openOverlayName = null;
+  els.scrim.hidden = true;
+  els.settings.classList.remove("open");
+  els.settings.setAttribute("aria-hidden", "true");
+  els.btnSettings.setAttribute("aria-expanded", "false");
+  els.app.classList.remove("filters-open");
+  els.btnFilters.setAttribute("aria-expanded", "false");
+  if (restoreFocus && overlayReturnFocus?.isConnected) overlayReturnFocus.focus();
+  overlayReturnFocus = null;
+}
+
+/* ── Preferences: theme, toolbar ── */
+
+function applyTheme() {
+  const choice = prefs.theme || "auto";
+  const resolved =
+    choice === "auto"
+      ? window.matchMedia("(prefers-color-scheme: light)").matches
+        ? "light"
+        : "dark"
+      : choice;
+  document.documentElement.dataset.theme = resolved;
+  $$("#theme-seg button").forEach((b) =>
+    b.setAttribute("aria-checked", String(b.dataset.themeChoice === choice)),
+  );
+}
+
+function syncToolbarControls() {
+  els.sortSelect.value = state.sort;
+  els.thumbSize.value = String(state.thumbSize);
+  els.thumbSize.disabled = state.gridLayout === "table";
+  $$("#layout-seg button").forEach((b) =>
+    b.setAttribute("aria-checked", String(b.dataset.layout === state.gridLayout)),
+  );
+}
+
+let relayoutRaf = null;
+
+/** Re-flow the grid when its width changes (or the size slider moves). */
+function scheduleRelayout(force) {
+  if (relayoutRaf != null) return;
+  relayoutRaf = requestAnimationFrame(() => {
+    relayoutRaf = null;
+    if (!state.ready || state.gridLayout === "table" || state.appMode === "view") return;
+    const width = gridContentWidth();
+    if (width <= 0) return;
+    if (!force && Math.abs(width - lastGridWidth) < 1) return;
+    if (!force && state.gridLayout === "square") {
+      lastGridWidth = width;
+      return;
+    }
+    renderList(filteredImages());
+  });
+}
+
+async function loadMore() {
+  if (!state.useApi || state.apiLoadingMore || els.btnLoadMore.hidden) return;
+  syncLoadMoreButton();
+  const p = tryLoadApi({ append: true });
+  syncLoadMoreButton();
+  await p;
   render();
 }
 
-init();
+async function setApiEnabled(on) {
+  state.useApi = on;
+  els.setApi.checked = on;
+  state.activeId = null;
+  state.detailIndex = -1;
+  if (state.appMode === "view") exitViewMode();
+  parseQueryTags(state.query);
+  if (on) {
+    await tryLoadApi();
+    await refreshIndexStatus();
+  } else {
+    state.apiImages = null;
+    state.apiTotal = null;
+    state.apiLoadError = null;
+  }
+  syncApiStatus();
+  render();
+}
+
+function syncApiStatus() {
+  const el = els.apiStatus;
+  el.classList.remove("ok", "error");
+  if (!state.useApi) {
+    el.textContent = "未接続のときはサンプルデータを表示します。";
+    return;
+  }
+  if (state.apiLoadError) {
+    el.classList.add("error");
+    el.textContent = `接続できません（${state.apiLoadError}）。make api-dev で API を起動してください。`;
+    return;
+  }
+  el.classList.add("ok");
+  el.textContent = `接続中。全 ${state.indexStatus?.images_active?.toLocaleString() ?? "—"} 枚。`;
+}
+
+/** Horizontal swipe on touch devices steps through the list. */
+function bindSwipe(el) {
+  let start = null;
+  el.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse") return;
+    start = { x: e.clientX, y: e.clientY, t: e.timeStamp };
+  });
+  el.addEventListener("pointerup", (e) => {
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    const quick = e.timeStamp - start.t < 600;
+    start = null;
+    if (quick && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) navDetail(dx < 0 ? 1 : -1);
+  });
+  el.addEventListener("pointercancel", () => {
+    start = null;
+  });
+}
+
+async function detectApi() {
+  try {
+    const res = await fetch("/api/index/status");
+    if (!res.ok) return false;
+    state.indexStatus = await res.json();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function init() {
+  const ids = {
+    app: "app",
+    grid: "image-grid",
+    tableWrap: "table-wrap",
+    tableBody: "table-body",
+    listScroll: "list-scroll",
+    listEmpty: "list-empty",
+    loadSentinel: "load-sentinel",
+    queryInput: "query-input",
+    chipRow: "chip-row",
+    queryError: "query-error",
+    activeFilters: "active-filters",
+    btnClearFilters: "btn-clear-filters",
+    breadcrumb: "breadcrumb",
+    routeList: "route-list",
+    tagList: "tag-list",
+    tagFilter: "tag-filter",
+    facetBasis: "facet-basis",
+    filterPane: "filter-pane",
+    resultCount: "result-count",
+    sortSelect: "sort-select",
+    thumbSize: "thumb-size",
+    detailEmpty: "detail-empty",
+    detailContent: "detail-content",
+    detailImage: "detail-image",
+    viewerStage: "viewer-stage",
+    detailPos: "detail-pos",
+    detailPrev: "detail-prev",
+    detailNext: "detail-next",
+    detailTitle: "detail-title",
+    detailSubline: "detail-subline",
+    detailContext: "detail-context",
+    detailPageSlot: "detail-page-slot",
+    workPos: "work-pos",
+    workPrev: "work-prev",
+    workNext: "work-next",
+    pageStrip: "page-strip",
+    detailTags: "detail-tags",
+    detailMeta: "detail-meta",
+    btnBackExplore: "btn-back-explore",
+    btnInfo: "btn-info",
+    btnLoadMore: "btn-load-more",
+    btnFilters: "btn-filters",
+    btnSettings: "btn-settings",
+    scrim: "scrim",
+    settings: "settings",
+    setApi: "set-api",
+    apiStatus: "api-status",
+    labIndexBody: "lab-index-body",
+    labIndexRefresh: "lab-index-refresh",
+  };
+  for (const [key, id] of Object.entries(ids)) els[key] = document.getElementById(id);
+
+  applyTheme();
+  document.documentElement.style.setProperty("--thumb", `${state.thumbSize}px`);
+  bindEvents();
+
+  const wantApi = prefs.useApi ?? (await detectApi());
+  if (wantApi) {
+    await setApiEnabled(true);
+  } else {
+    syncApiStatus();
+    renderIndexStatusPanel();
+  }
+  state.ready = true;
+  els.app.removeAttribute("aria-busy");
+  render();
+}
+
+void init();

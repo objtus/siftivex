@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Siftivex — Mockup v2 (PC)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="mockup.css">
+</head>
+<body>
+  <div class="app layout-b mode-explore" id="app">
+    <header class="header">
+      <div class="logo">Sift<span>ivex</span> <small class="ver">v2</small></div>
+      <span class="mode-badge" id="mode-badge">探索</span>
+      <span class="layout-badge" id="layout-badge">案 B</span>
+      <div class="header-spacer"></div>
+      <span class="stat" id="result-count">—</span>
+      <div class="view-tabs" role="tablist" aria-label="表示モード">
+        <button type="button" class="active" data-view="grid">グリッド</button>
+        <button type="button" data-view="table">リスト</button>
+      </div>
+      <button type="button" class="btn-ghost" id="btn-back-explore" hidden>← 探索に戻る</button>
+    </header>
+
+    <div class="bulk-bar" id="bulk-bar">
+      <span id="bulk-count">0 件選択</span>
+      <button type="button">タグ追加</button>
+      <button type="button">アルバムに追加</button>
+    </div>
+
+    <div class="workspace" id="workspace">
+      <aside class="filter-pane" id="filter-pane">
+        <div class="pane-title">フィルタ</div>
+        <input type="search" class="query-input" id="query-input"
+          placeholder="tag:1girl tag:種類/写真 -tag:… または自然言語" spellcheck="false">
+        <nav class="origin-breadcrumb" id="breadcrumb" aria-label="起点履歴"></nav>
+        <div class="route-tabs" role="tablist" aria-label="ルート">
+          <button type="button" class="active" data-route="all">すべて</button>
+          <button type="button" data-route="route/under-iphone">under</button>
+          <button type="button" data-route="route/pixiv">pixiv</button>
+        </div>
+        <div class="chip-row" id="chip-row"></div>
+        <p class="query-note" id="query-note" hidden>API 検索ヒント</p>
+        <div class="sidebar-head">
+          <input type="search" id="tag-filter" placeholder="タグを検索…">
+        </div>
+        <div class="tag-list" id="tag-list"></div>
+      </aside>
+
+      <div class="stage" id="stage">
+        <section class="list-pane" id="list-pane">
+          <div class="list-toolbar">
+            <label>並び替え
+              <select id="sort-select">
+                <option value="file_name">ファイル名</option>
+                <option value="score">関連度</option>
+                <option value="tags">タグ数</option>
+              </select>
+            </label>
+            <button type="button" class="btn-load-more" id="btn-load-more" hidden>
+              さらに読み込み
+            </button>
+            <span class="hint" id="nav-hint">クリックで詳細 · Shift+クリックで複数選択</span>
+          </div>
+          <div class="image-grid" id="image-grid"></div>
+          <div class="image-table-wrap" id="table-wrap" hidden>
+            <table class="image-table">
+              <thead>
+                <tr>
+                  <th class="col-thumb"></th>
+                  <th class="col-filename">ファイル名</th>
+                  <th class="col-tags">タグ</th>
+                  <th class="col-ocr">OCR</th>
+                  <th class="col-score">スコア</th>
+                </tr>
+              </thead>
+              <tbody id="table-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <aside class="detail-pane" id="detail-pane">
+          <div class="detail-empty" id="detail-empty">
+            リストから画像を選択<br>
+            <small>← → リスト · [ ] 作品ページ · / 検索</small>
+          </div>
+          <div id="detail-content" class="detail-content" hidden>
+            <header class="detail-topbar">
+              <div class="nav-group">
+                <span class="nav-label">リスト</span>
+                <button type="button" id="detail-prev" title="リスト前">←</button>
+                <span class="pos" id="detail-pos">—</span>
+                <button type="button" id="detail-next" title="リスト次">→</button>
+              </div>
+              <button type="button" class="btn-ghost" id="btn-enter-view" hidden>全画面で見る</button>
+            </header>
+
+            <div class="detail-image-wrap" id="detail-image"></div>
+
+            <section class="detail-context" id="detail-context" aria-label="作品情報">
+              <div class="detail-context-head">
+                <h2 class="detail-title" id="detail-title">—</h2>
+                <div class="detail-subline" id="detail-subline"></div>
+              </div>
+              <div class="detail-page-slot" id="detail-page-slot">
+                <div class="nav-group work-nav-row" id="detail-page-nav">
+                  <span class="nav-label">作品</span>
+                  <button type="button" id="work-prev" disabled title="前のページ">[</button>
+                  <span class="pos" id="work-pos">—</span>
+                  <button type="button" id="work-next" disabled title="次のページ">]</button>
+                </div>
+                <div class="page-strip" id="page-strip"></div>
+              </div>
+            </section>
+
+            <div class="detail-body">
+              <section>
+                <div class="section-head">
+                  <div class="section-title">タグ（レイヤー別）</div>
+                  <button type="button" id="btn-retag" class="btn-ghost btn-retag" hidden title="VLM で auto タグを付け直す（API モード）">再タグ</button>
+                </div>
+                <div class="tag-editor" id="detail-tags"></div>
+              </section>
+              <section>
+                <div class="section-title">ファイル</div>
+                <dl class="meta-grid" id="detail-meta"></dl>
+              </section>
+              <section class="similar-section">
+                <div class="section-title">類似画像</div>
+                <div class="similar-tabs">
+                  <button type="button" class="active" data-tab="color">色味</button>
+                  <button type="button" data-tab="date">時期</button>
+                  <button type="button" data-tab="motif">モチーフ</button>
+                </div>
+                <div class="similar-strip" id="similar-strip"></div>
+                <button type="button" class="btn-reflux" id="btn-similar-reflux">この軸でリストを更新（還流）</button>
+              </section>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <aside class="mockup-lab" id="mockup-lab">
+    <div class="lab-head" id="lab-toggle">
+      <strong>Layout Lab</strong>
+      <span>▼</span>
+    </div>
+    <div class="lab-body">
+      <div class="lab-row">
+        <label for="lab-preset">PC レイアウト</label>
+        <select id="lab-preset">
+          <option value="a">案 A — 3ペイン常駐</option>
+          <option value="b" selected>案 B — 探索 ⇔ 閲覧</option>
+        </select>
+      </div>
+      <div class="lab-row">
+        <label for="lab-cols">グリッド列数 <span id="lab-cols-val">6</span></label>
+        <input type="range" id="lab-cols" min="3" max="12" step="1" value="6">
+      </div>
+      <div class="lab-row">
+        <label for="lab-sidebar-w">左ペイン幅 <span id="lab-sidebar-w-val">280px</span></label>
+        <input type="range" id="lab-sidebar-w" min="220" max="400" step="10" value="280">
+      </div>
+      <div class="lab-row">
+        <label for="lab-detail-w">詳細ペイン幅 (A) <span id="lab-detail-w-val">420px</span></label>
+        <input type="range" id="lab-detail-w" min="320" max="560" step="10" value="420">
+      </div>
+      <div class="lab-row">
+        <label for="lab-table-thumb">リストサムネ <span id="lab-table-thumb-val">28px</span></label>
+        <input type="range" id="lab-table-thumb" min="20" max="48" step="2" value="28">
+      </div>
+      <div class="lab-checks">
+        <label><input type="checkbox" id="lab-api"> 実 API 接続</label>
+      </div>
+      <section class="lab-index" id="lab-index" aria-label="索引ステータス">
+        <div class="lab-index-head">
+          <strong>索引 / タグスタック</strong>
+          <button type="button" class="btn-ghost btn-tiny" id="lab-index-refresh">更新</button>
+        </div>
+        <div class="lab-index-body" id="lab-index-body">API に接続して「更新」</div>
+      </section>
+      <p class="lab-hint">
+        <strong>案 A</strong>: リストと詳細を常時表示<br>
+        <strong>案 B</strong>: 探索=リスト中心 · 画像クリック=閲覧 · Esc=探索へ（スクロール復元）<br>
+        [ ] = 作品ページ（リストとは独立）
+      </p>
+    </div>
+  </aside>
+
+  <script type="module" src="mockup.js"></script>
+</body>
+</html>
