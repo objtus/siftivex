@@ -126,7 +126,7 @@ flowchart TD
 1. ✅ M0〜M2  本番 DB（tagger/d1 ~40k）
 2. 🟡 M3      検索/API/mockup — 残: ingest 増分 tagger · 移行チェックリスト
 3. ~~Phase 2 実利用検証~~ ✅ 2026-10-12
-4. **次**     Tag Bridge（辞書 · [tag-bridge.md](../decisions/tag-bridge.md)）· M4 inferred_ja · ingest 増分
+4. **次**     Tag Bridge — [tag-bridge-implementation.md](tag-bridge-implementation.md) · M4 · ingest 増分
 5. 後         Phase 3 編集 · React 昇格 · M5 Gemma/VLM caption
 ```
 

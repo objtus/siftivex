@@ -69,5 +69,5 @@
 
 - 仕様: [specs/tag-bridge.md](../specs/tag-bridge.md)
 - クエリ: [query-language.md](../specs/query-language.md) §Tag Bridge
-- 実装順（案）: JSON + GET/PUT API → search 展開 → mockup 設定 UI → 詳細から追加 → 共起候補
+- **実装計画**: [tag-bridge-implementation.md](../plans/tag-bridge-implementation.md)
 - roadmap: M4 より **先に bridge 単体**でも価値あり（既存 4 万枚を触らない）
